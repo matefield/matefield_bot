@@ -40,7 +40,8 @@ class PlayersService:
                 session.add(redemption)
                 await session.flush()
             if not player:
-                session.add(Player(steam_id=req.steam_id, discord_id=req.discord_id))
+                player = Player(steam_id=req.steam_id, discord_id=req.discord_id)
+                session.add(player)
             else:
                 # Compare-and-set prevents two Discord users claiming the same unlinked player.
                 result = await session.exec(
@@ -51,6 +52,17 @@ class PlayersService:
                 if result.rowcount != 1:
                     await session.rollback()
                     return await PlayersService._resolve_link_race(req, session)
+            
+            # Retroactively evaluate seeding points now that Discord is linked
+            if player:
+                player.discord_id = req.discord_id
+                from src.connections.databases.db import BotConfig
+                cfg = await session.get(BotConfig, "SEEDING_MINUTES_PER_POINT")
+                minutes_per_point = int(cfg.config_value) if (cfg and cfg.config_value and cfg.config_value.isdigit()) else 30
+                from src.modules.v1.services.rewards_service import RewardsService
+                RewardsService.evaluate_global_seeding(player, minutes_per_point)
+                session.add(player)
+
             await session.commit()
         except IntegrityError:
             # PK + unique discord_id also protect simultaneous new-player inserts.
@@ -88,6 +100,12 @@ class PlayersService:
         return {
             "steam_id": player.steam_id,
             "in_game_name": player.in_game_name,
+            "discord_id": player.discord_id,
+            "role": "PLAYER",
+            "roles": [],
+            "active_memberships": [],
+            "is_banned": False,
+            "reward_points": player.reward_points,
             "custom_welcome_message": player.custom_welcome_message,
             "observations": player.observations,
         }
@@ -141,16 +159,20 @@ class PlayersService:
             primary_role = active_roles[0]
 
         return {
+            "steam_id": player.steam_id,
             "name": player.in_game_name,
             "in_game_name": player.in_game_name,
             "avatar_url": player.avatar_url,
             "discord_id": player.discord_id, 
             "custom_welcome_message": player.custom_welcome_message,
             "observations": player.observations,
-            "active_role": primary_role,
+            "role": primary_role or "PLAYER",
+            "active_role": primary_role or "PLAYER",
             "is_banned": is_banned,
+            "reward_points": player.reward_points,
             "memberships": active_memberships,
             "active_memberships": active_memberships,
+            "roles": [r.name if (r.name and not r.name.isdigit()) else r.code for r in special_roles if r.role_type == "SPECIAL"],
             "special_roles": [r.name if (r.name and not r.name.isdigit()) else r.code for r in special_roles if r.role_type == "SPECIAL"]
         }
 

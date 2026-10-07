@@ -55,6 +55,8 @@ class Player(SQLModel, table=True):
     in_game_name: Optional[str] = Field(default=None)
     avatar_url: Optional[str] = Field(default=None)
     reward_points: int = Field(default=0)
+    global_seeding_seconds: int = Field(default=0)
+    global_rewarded_seconds: int = Field(default=0)
     
     __table_args__ = (
         CheckConstraint("reward_points >= 0", name="check_player_points_positive"),
@@ -89,6 +91,7 @@ class PlayerSession(SQLModel, table=True):
     __tablename__ = "player_sessions"
     id: str = Field(default_factory=lambda: str(uuid.uuid4()), primary_key=True)
     steam_id: str = Field(foreign_key="players.steam_id", index=True)
+    server_id: Optional[int] = Field(default=None, foreign_key="rcon_servers.id")
     
     start_time: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), sa_column=Column(DateTime(timezone=True)))
     end_time: Optional[datetime] = Field(default=None, sa_column=Column(DateTime(timezone=True)))
@@ -134,6 +137,7 @@ class MatchPlayerStats(SQLModel, table=True):
     steam_id: str = Field(foreign_key="players.steam_id", primary_key=True)
     match_id: str = Field(foreign_key="matches.id", primary_key=True)
     team_id: Optional[int] = Field(default=None, foreign_key="teams.id")
+    squad_id: Optional[str] = Field(default=None, sa_column=Column(ForeignKey("squads.id", ondelete="SET NULL")))
     kills: int = Field(default=0)
     deaths: int = Field(default=0)
     cash_earned: int = Field(default=0)
@@ -141,6 +145,43 @@ class MatchPlayerStats(SQLModel, table=True):
     # Relationships
     player: Player = Relationship()
     team: Optional[Team] = Relationship()
+    squad: Optional["Squad"] = Relationship()
+
+
+class Squad(SQLModel, table=True):
+    __tablename__ = "squads"
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()), primary_key=True)
+    name: str = Field(unique=True, index=True)
+    tag: str = Field(max_length=4, index=True)
+    leader_steam_id: str = Field(foreign_key="players.steam_id", index=True)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), sa_column=Column(DateTime(timezone=True), nullable=False))
+    
+    total_kills: int = Field(default=0)
+    total_deaths: int = Field(default=0)
+    total_cash_earned: int = Field(default=0)
+    total_matches_played: int = Field(default=0)
+    
+    # Relationships
+    leader: Player = Relationship()
+    members: List["SquadMember"] = Relationship(back_populates="squad")
+
+class SquadMember(SQLModel, table=True):
+    __tablename__ = "squad_members"
+    squad_id: str = Field(foreign_key="squads.id", primary_key=True)
+    steam_id: str = Field(foreign_key="players.steam_id", primary_key=True)
+    joined_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), sa_column=Column(DateTime(timezone=True), nullable=False))
+    
+    squad: Squad = Relationship(back_populates="members")
+    player: Player = Relationship()
+
+class SquadInvite(SQLModel, table=True):
+    __tablename__ = "squad_invites"
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()), primary_key=True)
+    squad_id: str = Field(foreign_key="squads.id", index=True)
+    inviter_steam_id: str = Field(foreign_key="players.steam_id")
+    invitee_discord_id: str = Field(index=True)
+    status: str = Field(default="PENDING") # PENDING, ACCEPTED, REJECTED
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), sa_column=Column(DateTime(timezone=True), nullable=False))
 
 
 class SteamLinkRedemption(SQLModel, table=True):

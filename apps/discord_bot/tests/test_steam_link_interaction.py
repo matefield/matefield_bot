@@ -1,3 +1,5 @@
+from datetime import datetime
+from wardogs_schemas import v1 as schemas
 from unittest.mock import AsyncMock, MagicMock
 from urllib.parse import urlparse, parse_qs
 import hikari
@@ -56,7 +58,7 @@ async def test_persistent_handler_uses_each_clickers_identity_and_private_respon
 @pytest.mark.asyncio
 @pytest.mark.parametrize("name", ["Steam Name", None])
 async def test_already_linked_is_private_terminal_state(client, name):
-    client.model.api.get_player_by_discord.return_value = {"steam_id": "76561198000000888", "in_game_name": name}
+    client.model.api.get_player_by_discord.return_value = schemas.PlayerResponse(steam_id="76561198000000888", in_game_name=name, roles=[], created_at="2026-10-06T00:00:00Z", updated_at="2026-10-06T00:00:00Z")
     ev = event()
     await account.on_steam_link_button_click.metadata.callback(ev)
     reply = ev.interaction.edit_initial_response.call_args.kwargs

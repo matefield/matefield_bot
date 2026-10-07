@@ -11,12 +11,7 @@ logger = logging.getLogger(__name__)
 
 plugin = crescent.Plugin[hikari.GatewayBot, Model]()
 
-# UI / Theme Colors
-COLOR_GOLD = 0xF1C40F
-COLOR_GREEN = 0x2ECC71
-COLOR_BLUE = 0x3498DB
-COLOR_ORANGE = 0xE67E22
-COLOR_RED = 0xE74C3C
+from src.ui_utils import UIColors
 
 
 async def autocomplete_active_rewards(
@@ -27,10 +22,10 @@ async def autocomplete_active_rewards(
         catalog = await plugin.model.api.get_rewards_catalog(only_active=True)
         results = []
         for r in catalog:
-            code = r.get("code", "")
-            name = r.get("name", code)
-            cost = r.get("cost_points", 0)
-            dtype = "⚡ Auto" if r.get("delivery_type") == "AUTOMATIC" else "🎟️ Ticket"
+            code = r.code
+            name = r.name or code
+            cost = r.cost_points
+            dtype = "⚡ Auto" if r.delivery_type == "AUTOMATIC" else "🎟️ Ticket"
             label = f"{name} ({cost} pts) [{dtype}]"[:100]
             if not val or val in code.lower() or val in name.lower():
                 results.append((label, code))
@@ -73,32 +68,32 @@ class RewardsBalance:
             await ctx.respond(f"❌ Error al consultar balance: {err_msg}", ephemeral=True)
             return
 
-        points = data.get("reward_points", 0)
-        seeding_mins = data.get("total_seeding_minutes", 0)
-        next_point_mins = data.get("next_point_minutes_left", 30)
+        points = data.reward_points
+        seeding_mins = data.total_seeding_minutes
+        next_point_mins = data.next_point_minutes_left
         
         hours = seeding_mins // 60
         mins = seeding_mins % 60
         time_str = f"{hours}h {mins}m" if hours > 0 else f"{mins} minutos"
-        in_game = data.get("in_game_name") or "Sin registrar"
-        steam_id = data.get("steam_id", "Desconocido")
+        in_game = data.in_game_name or "Sin registrar"
+        steam_id = data.steam_id or "Desconocido"
 
         embed = hikari.Embed(
             title="🏆 Centro de Recompensas y Seeding",
             description=f"Perfil de recompensas para {target.mention}",
-            color=COLOR_GOLD,
+            color=UIColors.GOLD,
         )
         embed.add_field(name="🎮 Jugador", value=f"**{in_game}**\n`{steam_id}`", inline=True)
         embed.add_field(name="⭐ Puntos Disponibles", value=f"**{points:,}** pts", inline=True)
         embed.add_field(name="⏱️ Tiempo Total de Seeding", value=f"**{time_str}**", inline=True)
         embed.add_field(name="⏳ Siguiente Punto En", value=f"**{next_point_mins} mins**", inline=True)
 
-        claims = data.get("claims", [])
-        pending_claims = [c for c in claims if c.get("status") == "PENDING"]
+        claims = getattr(data, "active_claims", getattr(data, "claims", []))
+        pending_claims = [c for c in claims if c.status == "PENDING"]
         if pending_claims:
             vouchers_text = []
             for c in pending_claims[:5]:
-                vouchers_text.append(f"• **{c.get('reward_name')}**: Código `{c.get('claim_code')}`")
+                vouchers_text.append(f"• **{c.reward_name}**: Código `{c.claim_code}`")
             embed.add_field(
                 name="🎫 Canjes Pendientes (Tickets)",
                 value="\n".join(vouchers_text) + "\n*Abre un ticket de soporte y presenta tu código.*",
@@ -128,15 +123,15 @@ class RewardsCatalog:
         embed = hikari.Embed(
             title="🎁 Catálogo de Recompensas",
             description="Acumula puntos de seeding y canjéalos por beneficios exclusivos:",
-            color=COLOR_GREEN,
+            color=UIColors.GREEN,
         )
 
         for item in items:
-            code = item.get("code")
-            name = item.get("name")
-            cost = item.get("cost_points", 0)
-            desc = item.get("description") or "Sin descripción"
-            dtype = "⚡ Automático" if item.get("delivery_type") == "AUTOMATIC" else "🎟️ Ticket Soporte"
+            code = item.code
+            name = item.name
+            cost = item.cost_points
+            desc = item.description or "Sin descripción"
+            dtype = "⚡ Automático" if item.delivery_type == "AUTOMATIC" else "🎟️ Ticket Soporte"
             
             value_line = f"**Costo:** `{cost} pts` | **Entrega:** `{dtype}`\n{desc}\n`Código:` **`{code}`**"
             embed.add_field(name=f"🏅 {name}", value=value_line, inline=False)
@@ -173,12 +168,12 @@ class RewardsClaim:
             await ctx.respond(f"❌ Error al canjear recompensa: {err_msg}", ephemeral=True)
             return
 
-        claim_code = result.get("claim_code")
-        reward_name = result.get("reward_name")
-        points_spent = result.get("cost_points")
-        remaining = result.get("remaining_points")
-        delivery = result.get("delivery", {})
-        dtype = delivery.get("delivery_type", "AUTOMATIC")
+        claim_code = result.claim_code
+        reward_name = result.reward_name
+        points_spent = result.cost_points
+        remaining = result.remaining_points
+        delivery = result.delivery
+        dtype = delivery.delivery_type
 
         if dtype == "AUTOMATIC":
             embed = hikari.Embed(
@@ -188,10 +183,10 @@ class RewardsClaim:
                     "⚡ Tu beneficio ya ha sido activado automáticamente en el servidor y bot.\n"
                     f"Puntos restantes: **{remaining} pts**"
                 ),
-                color=COLOR_GREEN,
+                color=UIColors.GREEN,
             )
         else:
-            instructions = delivery.get("instructions", "Abre un ticket de soporte y proporciona tu código.")
+            instructions = delivery.instructions or "Abre un ticket de soporte y proporciona tu código."
             embed = hikari.Embed(
                 title="🎫 ¡Canje Registrado Exitosamente!",
                 description=(
@@ -200,7 +195,7 @@ class RewardsClaim:
                     f"{instructions}\n\n"
                     f"Puntos restantes: **{remaining} pts**"
                 ),
-                color=COLOR_BLUE,
+                color=UIColors.BLUE,
             )
 
         embed.set_footer(text="Conserva tu código de canje en caso de requerir soporte.")
@@ -226,6 +221,21 @@ class RewardsSetThreshold:
         await plugin.model.api.set_bot_config("SEEDING_MIN_PLAYERS", str(self.limite))
         await ctx.respond(f"✅ Umbral de seeding actualizado: Menos de **{self.limite}** jugadores contará como seed.")
 
+
+@plugin.include
+@crescent.hook(admin_only)
+@rewards_admin_group.child
+@crescent.command(name="set_min_players", description="Configura el mínimo de jugadores para empezar a contar seeding (Admin)")
+class RewardsSetMinPlayers:
+    minimo = crescent.option(int, "Cantidad mínima (ej: 4). Menos de esto se ignora (evita AFK farming)")
+
+    async def callback(self, ctx: crescent.Context) -> None:
+        await ctx.defer(ephemeral=True)
+        if self.minimo < 1:
+            await ctx.respond("❌ El mínimo debe ser al menos 1.", ephemeral=True)
+            return
+        await plugin.model.api.set_bot_config("SEEDING_MIN_PLAYERS_TO_COUNT", str(self.minimo))
+        await ctx.respond(f"✅ Límite inferior actualizado: Se requieren al menos **{self.minimo}** jugadores para empezar a contar seeding.")
 
 @plugin.include
 @crescent.hook(admin_only)
@@ -259,7 +269,7 @@ class RewardsVerifyClaim:
             return
 
         status = data.get("status")
-        status_color = COLOR_GREEN if status == "DELIVERED" else (COLOR_ORANGE if status == "PENDING" else COLOR_RED)
+        status_color = UIColors.GREEN if status == "DELIVERED" else (UIColors.GOLD if status == "PENDING" else UIColors.RED)
         embed = hikari.Embed(
             title=f"🔎 Verificación de Voucher: `{data.get('claim_code')}`",
             color=status_color,
@@ -389,7 +399,7 @@ class RewardsAddItem:
                 description=str(self.descripcion) if self.descripcion else None,
                 is_active=True,
             )
-            await ctx.respond(f"✅ {res.get('message', 'Recompensa configurada exitosamente.')}")
+            await ctx.respond(f"✅ Recompensa '{res.name}' ({res.code}) configurada exitosamente.")
         except Exception as e:
             await ctx.respond(f"❌ Error al configurar recompensa: {e}", ephemeral=True)
 

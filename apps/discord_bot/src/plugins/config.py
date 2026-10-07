@@ -153,7 +153,7 @@ class GiveRole:
             if not player_info:
                 await ctx.respond(f"❌ El usuario {self.usuario.mention} no tiene cuenta vinculada.")
                 return
-            steam_id = player_info.get("steam_id")
+            steam_id = player_info.steam_id
             
             roles = await plugin.model.api.get_all_roles()
             role_obj = next((r for r in roles if r.get("code", "").upper() == self.rol.strip().upper()), None)
@@ -189,7 +189,7 @@ class RemoveRole:
             if not player_info:
                 await ctx.respond(f"❌ El usuario {self.usuario.mention} no tiene cuenta vinculada.")
                 return
-            steam_id = player_info.get("steam_id")
+            steam_id = player_info.steam_id
             
             roles = await plugin.model.api.get_all_roles()
             role_obj = next((r for r in roles if r.get("code", "").upper() == self.rol.strip().upper()), None)
@@ -266,7 +266,7 @@ class RolesSync:
                     t["details"] = "Usuario sin cuenta vinculada"
                     await ctx.respond(tracer.append_to_message(f"❌ El usuario {self.usuario.mention} no tiene cuenta vinculada."))
                     return
-                t["details"] = f"Steam ID: {player_info.get('steam_id')}"
+                t["details"] = f"Steam ID: {player_info.steam_id}"
 
             with tracer.measure("Sincronizar roles Discord", category="DISCORD", action="SYNC", target=str(self.usuario.id)) as t:
                 from src.plugins.tasks import sync_single_user_roles

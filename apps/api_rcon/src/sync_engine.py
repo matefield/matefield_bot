@@ -31,6 +31,8 @@ class SyncEngineState:
         self.current_rotation_index: Optional[int] = None
         self.current_match_id: Optional[str] = None
         self.current_map: Optional[str] = None
+        self.empty_since: Optional[datetime.datetime] = None
+        self.has_unvalidated_seeding_campaign: bool = True
 
 default_sync_state = SyncEngineState()
 
@@ -157,7 +159,16 @@ async def process_sync_tick(
         state.current_map = map_name
 
     # 2. Sync players & player stats
+    from src.connections.databases.db import SquadMember
     current_players_list = players.players if (players and players.players) else []
+    
+    # Pre-fetch squad memberships for active players to avoid N queries
+    squad_memberships = {}
+    if current_players_list:
+        active_steam_ids = [p.steamId for p in current_players_list if p.steamId]
+        squad_mems = (await session.exec(select(SquadMember).where(col(SquadMember.steam_id).in_(active_steam_ids)))).all()
+        squad_memberships = {m.steam_id: m.squad_id for m in squad_mems}
+
     for p in current_players_list:
         if not p.steamId:
             continue
@@ -173,6 +184,7 @@ async def process_sync_tick(
             
         if state.current_match_id:
             team_id = await _get_or_create_team(session, p.faction)
+            current_squad_id = squad_memberships.get(p.steamId)
             stmt = select(MatchPlayerStats).where(
                 MatchPlayerStats.match_id == state.current_match_id,
                 MatchPlayerStats.steam_id == p.steamId
@@ -183,6 +195,7 @@ async def process_sync_tick(
                     match_id=state.current_match_id,
                     steam_id=p.steamId,
                     team_id=team_id,
+                    squad_id=current_squad_id,
                     kills=p.kills or 0,
                     deaths=p.deaths or 0,
                     cash_earned=p.cash or 0
@@ -191,6 +204,7 @@ async def process_sync_tick(
                 stats.kills = p.kills or 0
                 stats.deaths = p.deaths or 0
                 stats.team_id = team_id
+                stats.squad_id = current_squad_id
                 current_cash = p.cash or 0
                 if current_cash > stats.cash_earned:
                     stats.cash_earned = current_cash
@@ -237,6 +251,28 @@ async def process_sync_tick(
                 match_record.winning_team_id = winning_team_id
                 session.add(match_record)
                 match_ended = True
+                
+                # --- Update Squad Stats ---
+                try:
+                    from src.connections.databases.db import SquadMember, Squad
+                    match_stats = (await session.exec(select(MatchPlayerStats).where(MatchPlayerStats.match_id == state.current_match_id))).all()
+                    updated_squads = set()
+                    
+                    for ms in match_stats:
+                        squad_mem = (await session.exec(select(SquadMember).where(SquadMember.steam_id == ms.steam_id))).first()
+                        if squad_mem:
+                            squad = await session.get(Squad, squad_mem.squad_id)
+                            if squad:
+                                squad.total_kills += ms.kills
+                                squad.total_deaths += ms.deaths
+                                squad.total_cash_earned += ms.cash_earned
+                                if squad.id not in updated_squads:
+                                    squad.total_matches_played += 1
+                                    updated_squads.add(squad.id)
+                                session.add(squad)
+                except Exception as sq_err:
+                    logger.error(f"[Match Engine] Error updating squad stats: {sq_err}")
+                # -------------------------
 
     await session.commit()
     return {
@@ -276,12 +312,12 @@ async def poll_rcon(state: Optional[SyncEngineState] = None):
             last_poll_time = now
             
             global_current_steam_ids = set()
-            global_is_seeding = False # If any server is seeding, player gets seeding points? Or we evaluate per player?
-            # We will evaluate if player is seeding based on if ANY of their servers are seeding.
             seeding_servers_steam_ids = set()
+            player_to_server = {}
             
             async with AsyncSession(engine, expire_on_commit=False) as session:
                 seeding_threshold = await _get_int_config(session, "SEEDING_MIN_PLAYERS", DEFAULT_SEEDING_MIN_PLAYERS)
+                seeding_min_to_count = await _get_int_config(session, "SEEDING_MIN_PLAYERS_TO_COUNT", 4)
                 minutes_per_point = await _get_int_config(session, "SEEDING_MINUTES_PER_POINT", DEFAULT_SEEDING_MINUTES_PER_POINT)
                 
                 active_servers = await RCONManager.get_all_active_servers(session)
@@ -308,13 +344,54 @@ async def poll_rcon(state: Optional[SyncEngineState] = None):
                         # Collect global sessions data
                         current_players_list = players.players if (players and players.players) else []
                         current_players_count = (status.players.current or 0) if (status and status.players) else len(current_players_list)
-                        is_seeding = current_players_count < seeding_threshold
+                        is_seeding = current_players_count < seeding_threshold and current_players_count >= seeding_min_to_count
                         
                         for p in current_players_list:
                             if p.steamId:
                                 global_current_steam_ids.add(p.steamId)
+                                player_to_server[p.steamId] = s_id
                                 if is_seeding:
                                     seeding_servers_steam_ids.add(p.steamId)
+
+                        # --- Seeding Campaign Evaluation ---
+                        if is_seeding and current_players_count > 0:
+                            state.has_unvalidated_seeding_campaign = True
+                            state.empty_since = None
+
+                        if current_players_count >= seeding_threshold:
+                            state.empty_since = None
+                            if state.has_unvalidated_seeding_campaign:
+                                # Campaign SUCCEEDED! Validate pending seconds for this server
+                                unvalidated_stmt = select(PlayerSession).where(
+                                    PlayerSession.server_id == s_id, 
+                                    PlayerSession.seeding_seconds > PlayerSession.rewarded_seeding_seconds
+                                )
+                                for s in (await session.exec(unvalidated_stmt)).all():
+                                    untransferred = s.seeding_seconds - s.rewarded_seeding_seconds
+                                    db_p = await session.get(Player, s.steam_id)
+                                    if db_p:
+                                        db_p.global_seeding_seconds += untransferred
+                                        s.rewarded_seeding_seconds += untransferred
+                                        RewardsService.evaluate_global_seeding(db_p, minutes_per_point)
+                                        session.add(db_p)
+                                    session.add(s)
+                                state.has_unvalidated_seeding_campaign = False
+
+                        elif current_players_count == 0:
+                            if state.empty_since is None:
+                                state.empty_since = now
+                            elif (now - state.empty_since).total_seconds() > 300: # 5 minutes grace period
+                                if state.has_unvalidated_seeding_campaign:
+                                    # Campaign FAILED! Discard pending seconds for this server
+                                    failed_stmt = select(PlayerSession).where(
+                                        PlayerSession.server_id == s_id, 
+                                        PlayerSession.seeding_seconds > PlayerSession.rewarded_seeding_seconds
+                                    )
+                                    for s in (await session.exec(failed_stmt)).all():
+                                        s.seeding_seconds = s.rewarded_seeding_seconds
+                                        session.add(s)
+                                    state.has_unvalidated_seeding_campaign = False
+                        # ------------------------------------
 
                         if status and status.scoreTick and status.scoreCap:
                             tick_current = status.scoreTick.current or 0
@@ -331,23 +408,20 @@ async def poll_rcon(state: Optional[SyncEngineState] = None):
 
                 for s in active_sessions:
                     if s.steam_id in global_current_steam_ids:
-                        db_p = await session.get(Player, s.steam_id)
-                        player_is_seeding = s.steam_id in seeding_servers_steam_ids
-                        if db_p:
-                            RewardsService.process_session_seeding(
-                                session_obj=s,
-                                player_obj=db_p,
-                                delta_seconds=delta_seconds,
-                                is_seeding=player_is_seeding,
-                                minutes_per_point=minutes_per_point,
-                            )
-                            session.add(db_p)
+                        current_server_id_for_player = player_to_server.get(s.steam_id)
+                        if s.server_id != current_server_id_for_player:
+                            # Player changed servers without disconnecting! Close old session.
+                            s.end_time = s.start_time + datetime.timedelta(seconds=s.total_seconds)
+                            session.add(s)
+                            del active_session_dict[s.steam_id]
                         else:
+                            # Player is online and on the same server
                             s.total_seconds += delta_seconds
-                            if player_is_seeding:
+                            if s.steam_id in seeding_servers_steam_ids:
                                 s.seeding_seconds += delta_seconds
-                        session.add(s)
+                            session.add(s)
                     else:
+                        # Player disconnected
                         s.end_time = s.start_time + datetime.timedelta(seconds=s.total_seconds)
                         session.add(s)
 
@@ -358,7 +432,8 @@ async def poll_rcon(state: Optional[SyncEngineState] = None):
                         if not p_exists:
                             session.add(Player(steam_id=sid))
                             await session.flush()
-                        new_sess = PlayerSession(steam_id=sid, start_time=now)
+                        srv_id = player_to_server.get(sid)
+                        new_sess = PlayerSession(steam_id=sid, server_id=srv_id, start_time=now)
                         session.add(new_sess)
                         new_sids_for_avatar.append(sid)
                 

@@ -7,7 +7,10 @@ from src.connections.databases.db import (
     Team, 
     Match, 
     MatchTeamStats, 
-    MatchPlayerStats
+    MatchPlayerStats,
+    Squad,
+    SquadMember,
+    SquadInvite
 )
 
 __all__ = [
@@ -19,5 +22,8 @@ __all__ = [
     "Team", 
     "Match", 
     "MatchTeamStats", 
-    "MatchPlayerStats"
+    "MatchPlayerStats",
+    "Squad",
+    "SquadMember",
+    "SquadInvite"
 ]

@@ -22,4 +22,7 @@ role_group = crescent.Group("role", "Configuración de roles", hooks=[admin_only
 
 rewards_group = crescent.Group("rewards", "Sistema de puntos y recompensas")
 rewards_admin_group = rewards_group.sub_group("admin", "Administración del sistema de recompensas", hooks=[admin_only])
+
+squad_group = crescent.Group("squad", "Pelotones y clanes")
+squad_admin_group = squad_group.sub_group("admin", "Administración de pelotones", hooks=[admin_only])
 

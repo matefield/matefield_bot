@@ -1,7 +1,11 @@
+import logging
+import asyncio
 import aiohttp
 from typing import Dict, Any, Optional, List, Union
 
 from wardogs_schemas import v1 as schemas
+
+logger = logging.getLogger(__name__)
 
 class APIClient:
     def __init__(self, base_url: str, api_key: str):
@@ -24,26 +28,37 @@ class APIClient:
 
     DEFAULT_API_TIMEOUT = 15.0
 
-    async def _request(self, method: str, endpoint: str, **kwargs) -> Any:
+    async def _request(self, method: str, endpoint: str, retries: int = 3, **kwargs) -> Any:
         url = f"{self.base_url}{endpoint}"
         session = await self._get_session()
         timeout = kwargs.pop("timeout", aiohttp.ClientTimeout(total=self.DEFAULT_API_TIMEOUT))
-        async with session.request(method, url, timeout=timeout, **kwargs) as response:
-            if response.status >= 400:
-                detail = None
-                try:
-                    data = await response.json()
-                    if isinstance(data, dict) and "detail" in data:
-                        detail = data["detail"]
-                except Exception:
-                    pass
-                if detail is None:
-                    detail = await response.text()
-                raise Exception(f"HTTP {response.status}: {detail}")
-            response.raise_for_status()
-            if "application/json" in response.headers.get("Content-Type", ""):
-                return await response.json()
-            return await response.text()
+        
+        for attempt in range(retries):
+            try:
+                async with session.request(method, url, timeout=timeout, **kwargs) as response:
+                    if response.status >= 400:
+                        detail = None
+                        try:
+                            data = await response.json()
+                            if isinstance(data, dict) and "detail" in data:
+                                detail = data["detail"]
+                        except Exception:
+                            pass
+                        if detail is None:
+                            detail = await response.text()
+                        raise Exception(f"HTTP {response.status}: {detail}")
+                    response.raise_for_status()
+                    if "application/json" in response.headers.get("Content-Type", ""):
+                        return await response.json()
+                    return await response.text()
+            except aiohttp.ClientError as e:
+                if attempt == retries - 1:
+                    logger.error(f"API request failed after {retries} attempts: {method} {endpoint} - {e}")
+                    raise Exception(f"Error de conexión con la API: {e}") from e
+                
+                wait_time = 2 ** attempt
+                logger.warning(f"Connection error to {endpoint}: {e}. Retrying in {wait_time}s...")
+                await asyncio.sleep(wait_time)
 
     # RCON wrapped endpoints
     async def get_status(self) -> schemas.Status:
@@ -92,17 +107,19 @@ class APIClient:
         req = schemas.UnlinkAccountRequest(discord_id=discord_id)
         await self._request("POST", "/api/v1/db/players/unlink", json=req.model_dump())
 
-    async def get_player_by_discord(self, discord_id: str) -> Optional[Dict[str, Any]]:
+    async def get_player_by_discord(self, discord_id: str) -> Optional[schemas.PlayerResponse]:
         try:
-            return await self._request("GET", f"/api/v1/db/players/discord/{discord_id}")
+            res = await self._request("GET", f"/api/v1/db/players/discord/{discord_id}")
+            return schemas.PlayerResponse(**res)
         except Exception as e:
             if "HTTP 404" in str(e):
                 return None
             raise
 
-    async def get_player_by_steam(self, steam_id: str) -> Optional[Dict[str, Any]]:
+    async def get_player_by_steam(self, steam_id: str) -> Optional[schemas.PlayerResponse]:
         try:
-            return await self._request("GET", f"/api/v1/db/players/steam/{steam_id}")
+            res = await self._request("GET", f"/api/v1/db/players/steam/{steam_id}")
+            return schemas.PlayerResponse(**res)
         except Exception as e:
             if "HTTP 404" in str(e):
                 return None
@@ -297,8 +314,9 @@ class APIClient:
         await self.remove_special_role(steam_id, role_id)
 
     # RCON Server management endpoints
-    async def get_rcon_servers(self) -> List[Dict[str, Any]]:
-        return await self._request("GET", "/api/v1/rcon-servers")
+    async def get_rcon_servers(self) -> List[schemas.RconServerItem]:
+        res = await self._request("GET", "/api/v1/rcon-servers")
+        return [schemas.RconServerItem(**x) for x in res]
 
     async def create_rcon_server(
         self,
@@ -309,7 +327,7 @@ class APIClient:
         scheme: str = "http",
         is_active: bool = True,
         is_default: bool = False
-    ) -> Dict[str, Any]:
+    ) -> schemas.RconServerActionResponse:
         req = schemas.CreateRconServerRequest(
             ip=ip,
             port=port,
@@ -319,56 +337,71 @@ class APIClient:
             is_active=is_active,
             is_default=is_default
         )
-        return await self._request("POST", "/api/v1/rcon-servers", json=req.model_dump(exclude_none=True))
+        res = await self._request("POST", "/api/v1/rcon-servers", json=req.model_dump(exclude_none=True))
+        return schemas.RconServerActionResponse(**res)
 
-    async def get_rcon_server(self, server_id: int) -> Dict[str, Any]:
-        return await self._request("GET", f"/api/v1/rcon-servers/{server_id}")
+    async def get_rcon_server(self, server_id: int) -> schemas.RconServerItem:
+        res = await self._request("GET", f"/api/v1/rcon-servers/{server_id}")
+        return schemas.RconServerItem(**res)
 
-    async def update_rcon_server(self, server_id: int, **kwargs) -> Dict[str, Any]:
+    async def update_rcon_server(self, server_id: int, **kwargs) -> schemas.RconServerActionResponse:
         req = schemas.UpdateRconServerRequest(**kwargs)
-        return await self._request("PUT", f"/api/v1/rcon-servers/{server_id}", json=req.model_dump(exclude_unset=True))
+        res = await self._request("PUT", f"/api/v1/rcon-servers/{server_id}", json=req.model_dump(exclude_unset=True))
+        return schemas.RconServerActionResponse(**res)
 
-    async def delete_rcon_server(self, server_id: int) -> Dict[str, Any]:
-        return await self._request("DELETE", f"/api/v1/rcon-servers/{server_id}")
+    async def delete_rcon_server(self, server_id: int) -> schemas.RconServerActionResponse:
+        res = await self._request("DELETE", f"/api/v1/rcon-servers/{server_id}")
+        return schemas.RconServerActionResponse(**res)
 
-    async def test_rcon_server(self, server_id: int) -> Dict[str, Any]:
-        return await self._request("POST", f"/api/v1/rcon-servers/{server_id}/test")
+    async def test_rcon_server(self, server_id: int) -> schemas.RconServerTestResponse:
+        res = await self._request("POST", f"/api/v1/rcon-servers/{server_id}/test")
+        return schemas.RconServerTestResponse(**res)
 
-    async def sync_all_rcon_servers(self) -> Dict[str, Any]:
-        return await self._request("POST", "/api/v1/rcon-servers/sync-all")
+    async def sync_all_rcon_servers(self) -> schemas.RconServersSyncAllResponse:
+        res = await self._request("POST", "/api/v1/rcon-servers/sync-all")
+        return schemas.RconServersSyncAllResponse(**res)
 
     # Membership Types management endpoints
-    async def get_membership_types(self, active_only: bool = False) -> List[Dict[str, Any]]:
-        return await self._request("GET", f"/api/v1/membership-types?active_only={active_only}")
+    async def get_membership_types(self, active_only: bool = False) -> List[schemas.MembershipTypeItem]:
+        res = await self._request("GET", f"/api/v1/membership-types?active_only={active_only}")
+        return [schemas.MembershipTypeItem(**item) for item in res]
 
-    async def get_membership_type(self, identifier: Union[int, str]) -> Dict[str, Any]:
-        return await self._request("GET", f"/api/v1/membership-types/{identifier}")
+    async def get_membership_type(self, identifier: Union[int, str]) -> schemas.MembershipTypeItem:
+        res = await self._request("GET", f"/api/v1/membership-types/{identifier}")
+        return schemas.MembershipTypeItem(**res)
 
-    async def create_membership_type(self, **kwargs) -> Dict[str, Any]:
+    async def create_membership_type(self, **kwargs) -> schemas.MembershipTypeActionResponse:
         req = schemas.CreateMembershipTypeRequest(**kwargs)
-        return await self._request("POST", "/api/v1/membership-types", json=req.model_dump(exclude_none=True))
+        res = await self._request("POST", "/api/v1/membership-types", json=req.model_dump(exclude_none=True))
+        return schemas.MembershipTypeActionResponse(**res)
 
-    async def update_membership_type(self, type_id: int, **kwargs) -> Dict[str, Any]:
+    async def update_membership_type(self, type_id: int, **kwargs) -> schemas.MembershipTypeActionResponse:
         req = schemas.UpdateMembershipTypeRequest(**kwargs)
-        return await self._request("PUT", f"/api/v1/membership-types/{type_id}", json=req.model_dump(exclude_unset=True))
+        res = await self._request("PUT", f"/api/v1/membership-types/{type_id}", json=req.model_dump(exclude_unset=True))
+        return schemas.MembershipTypeActionResponse(**res)
 
-    async def delete_membership_type(self, type_id: int) -> Dict[str, Any]:
-        return await self._request("DELETE", f"/api/v1/membership-types/{type_id}")
+    async def delete_membership_type(self, type_id: int) -> schemas.MembershipTypeActionResponse:
+        res = await self._request("DELETE", f"/api/v1/membership-types/{type_id}")
+        return schemas.MembershipTypeActionResponse(**res)
 
     # Rewards & Seeding
-    async def get_rewards_catalog(self, only_active: bool = True) -> List[Dict[str, Any]]:
-        return await self._request("GET", f"/api/v1/rewards/catalog?only_active={only_active}")
+    async def get_rewards_catalog(self, only_active: bool = True) -> List[schemas.RewardItemResponse]:
+        res = await self._request("GET", f"/api/v1/rewards/catalog?only_active={only_active}")
+        return [schemas.RewardItemResponse(**i) for i in res]
 
-    async def get_player_rewards_balance(self, identifier: str) -> Dict[str, Any]:
-        return await self._request("GET", f"/api/v1/rewards/balance/{identifier}")
+    async def get_player_rewards_balance(self, identifier: str) -> schemas.PlayerRewardBalanceResponse:
+        res = await self._request("GET", f"/api/v1/rewards/balance/{identifier}")
+        return schemas.PlayerRewardBalanceResponse(**res)
 
-    async def claim_reward(self, player_identifier: str, reward_code: str) -> Dict[str, Any]:
+    async def claim_reward(self, player_identifier: str, reward_code: str) -> schemas.RewardClaimResultResponse:
         payload = schemas.ClaimRewardRequest(player_identifier=player_identifier, reward_code=reward_code).model_dump()
-        return await self._request("POST", "/api/v1/rewards/claim", json=payload)
+        res = await self._request("POST", "/api/v1/rewards/claim", json=payload)
+        return schemas.RewardClaimResultResponse(**res)
 
-    async def create_or_update_reward_item(self, **kwargs) -> Dict[str, Any]:
+    async def create_or_update_reward_item(self, **kwargs) -> schemas.RewardItemResponse:
         req = schemas.CreateRewardItemRequest(**kwargs)
-        return await self._request("POST", "/api/v1/rewards/admin/create", json=req.model_dump(exclude_none=True))
+        res = await self._request("POST", "/api/v1/rewards/admin/create", json=req.model_dump(exclude_none=True))
+        return schemas.RewardItemResponse(**res)
 
     async def verify_reward_claim(self, claim_code: str) -> Dict[str, Any]:
         return await self._request("GET", f"/api/v1/rewards/admin/verify/{claim_code}")
@@ -385,4 +418,36 @@ class APIClient:
         payload = schemas.GiveRewardPointsRequest(player_identifier=player_identifier, points=points, reason=reason).model_dump()
         return await self._request("POST", "/api/v1/rewards/admin/give_points", json=payload)
 
+    # Squads
+    async def create_squad(self, name: str, tag: str, leader_steam_id: str) -> schemas.SquadData:
+        res = await self._request("POST", f"/api/v1/db/squads?name={name}&tag={tag}&leader_steam_id={leader_steam_id}")
+        return schemas.SquadData(**res)
 
+    async def get_squad_leaderboard(self, sort_by: str = "kills") -> List[schemas.SquadData]:
+        res = await self._request("GET", f"/api/v1/db/squads/leaderboard?sort_by={sort_by}")
+        return [schemas.SquadData(**x) for x in res]
+
+    async def get_squad_internal_leaderboard(self, squad_id: str, sort_by: str = "kills") -> List[schemas.SquadMemberData]:
+        res = await self._request("GET", f"/api/v1/db/squads/{squad_id}/internal-leaderboard?sort_by={sort_by}")
+        return [schemas.SquadMemberData(**x) for x in res]
+
+    async def get_player_squads(self, steam_id: str) -> List[schemas.SquadData]:
+        res = await self._request("GET", f"/api/v1/db/squads/by-player/{steam_id}")
+        return [schemas.SquadData(**x) for x in res]
+
+    async def get_squad_by_tag(self, tag: str) -> schemas.SquadData:
+        res = await self._request("GET", f"/api/v1/db/squads/by-tag/{tag}")
+        return schemas.SquadData(**res)
+
+    async def get_squad_members(self, squad_id: str) -> List[schemas.SquadMemberData]:
+        res = await self._request("GET", f"/api/v1/db/squads/{squad_id}/members")
+        return [schemas.SquadMemberData(**x) for x in res]
+
+    async def add_squad_member(self, squad_id: str, steam_id: str) -> Dict[str, Any]:
+        return await self._request("POST", f"/api/v1/db/squads/{squad_id}/members?steam_id={steam_id}")
+
+    async def remove_squad_member(self, squad_id: str, steam_id: str) -> Dict[str, Any]:
+        return await self._request("DELETE", f"/api/v1/db/squads/{squad_id}/members/{steam_id}")
+
+    async def disband_squad(self, squad_id: str) -> Dict[str, Any]:
+        return await self._request("DELETE", f"/api/v1/db/squads/{squad_id}")

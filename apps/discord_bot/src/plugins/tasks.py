@@ -235,8 +235,8 @@ async def vip_monitor():
             for steam_id in new_ids:
                 user_data = await plugin.model.api.get_player_by_steam(steam_id)
                 if user_data:
-                    welcome_message = user_data.get("custom_welcome_message")
-                    active_role = user_data.get("active_role")
+                    welcome_message = getattr(user_data, 'custom_welcome_message', None)
+                    active_role = getattr(user_data, 'role', getattr(user_data, 'active_role', None))
                     
                     # Verificar que todavia sea VIP o ADMIN
                     if welcome_message and active_role:
@@ -355,7 +355,7 @@ async def execute_membership_sync(
         return stats
 
     for user_data in sync_data:
-        discord_id_str = user_data.get("discord_id")
+        discord_id_str = user_data.get('discord_id')
 
         if not discord_id_str:
             continue
@@ -365,8 +365,8 @@ async def execute_membership_sync(
             logger.info(f"[Sync] Usuario {discord_id_str} está en Whitelist, saltando sincronización.")
             continue
 
-        active_memberships = user_data.get("active_memberships", [])
-        special_roles = user_data.get("special_roles", [])
+        active_memberships = user_data.get('active_memberships', [])
+        special_roles = user_data.get('special_roles', [])
         discord_id = int(discord_id_str)
         stats["users_checked"] += 1
 
@@ -452,8 +452,8 @@ async def sync_single_user_roles(app: Any, model: Any, discord_id: int | str, ta
 
         roles_to_have: set[int] = set()
         if user_data:
-            active_memberships = user_data.get("active_memberships", []) or []
-            special_roles = user_data.get("special_roles", []) or []
+            active_memberships = user_data.get('active_memberships', []) or []
+            special_roles = user_data.get('special_roles', []) or []
 
             for m_type in active_memberships:
                 r_id = role_maps.get(m_type)

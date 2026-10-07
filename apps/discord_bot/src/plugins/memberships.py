@@ -18,7 +18,7 @@ _cached_types: list[dict] = []
 _last_types_fetch: float = 0.0
 _types_lock = asyncio.Lock()
 
-async def get_cached_membership_types() -> list[dict]:
+async def get_cached_membership_types():
     global _cached_types, _last_types_fetch
     now = time.time()
     if now - _last_types_fetch > 30 or not _cached_types:
@@ -41,9 +41,9 @@ async def autocomplete_tipo(
         types = await get_cached_membership_types()
         results = []
         for t in types:
-            code = t.get("code", "")
-            name = t.get("name", code)
-            price = t.get("price_usd", 0.0)
+            code = t.code or ""
+            name = t.name or code
+            price = t.price_usd or 0.0
             price_str = f" (${price})" if price > 0 else ""
             label = f"{name} [{code}]{price_str}"[:100]
             if val in code.lower() or val in name.lower():
@@ -99,7 +99,7 @@ class DbAddMembership:
                     await ctx.respond(tracer.append_to_message("❌ Este usuario no tiene una cuenta de Steam enlazada en la base de datos."))
                     return
                 
-                steam_id = player_info.get("steam_id")
+                steam_id = player_info.steam_id
                 if not steam_id:
                     t["status"] = "ERROR"
                     t["details"] = "Sin Steam ID"
@@ -633,18 +633,18 @@ class DbMembershipTypeList:
             )
 
             for t in types:
-                code = t.get("code", "")
-                name = t.get("name", code)
-                price = t.get("price_usd", 0.0)
-                billing = "Mensualidad" if t.get("billing_type") == "RECURRING" else "Pago Único"
-                days = t.get("default_days", 30)
+                code = t.code
+                name = t.name or code
+                price = t.price_usd or 0.0
+                billing = "Mensualidad" if t.billing_type == "RECURRING" else "Pago Único"
+                days = t.default_days or 30
                 days_str = "Permanente" if days == 0 else f"{days} días"
-                max_q = t.get("max_quota")
-                used_q = t.get("current_usage", 0)
+                max_q = t.max_quota
+                used_q = t.current_usage or 0
                 quota_str = f"{used_q}/{max_q}" if max_q is not None else f"{used_q} (Ilimitado)"
-                server_name = t.get("server_name", "Global (Todos)")
-                role_id = t.get("discord_role_id")
-                role_name = t.get("role_name")
+                server_name = t.server_name or "Global (Todos)"
+                role_id = t.discord_role_id
+                role_name = t.role_name
                 
                 if role_id:
                     role_str = f"<@&{role_id}>"
@@ -653,7 +653,7 @@ class DbMembershipTypeList:
                 else:
                     role_str = "Ninguno"
 
-                status_icon = "🟢" if t.get("is_active", True) else "🔴 (Inactivo)"
+                status_icon = "🟢" if t.is_active else "🔴 (Inactivo)"
 
                 price_line = f"💵 **Precio:** ${price:.2f} USD ({billing})\n"
 
@@ -713,7 +713,7 @@ class DbMembershipTypeCreate:
                 role_id=self.rol_db_id,
                 server_id=self.servidor
             )
-            msg = res.get("message", "Tipo de membresía creado.")
+            msg = res.message
             await ctx.respond(f"✅ {msg}")
         except Exception as e:
             await ctx.respond(f"❌ Error al crear tipo de membresía: {e}")
@@ -771,7 +771,7 @@ class DbMembershipTypeEdit:
                 return
 
             res = await plugin.model.api.update_membership_type(self.tipo_id, **kwargs)
-            msg = res.get("message", "Tipo de membresía actualizado.")
+            msg = res.message
             await ctx.respond(f"✅ {msg}")
         except Exception as e:
             await ctx.respond(f"❌ Error al actualizar tipo de membresía: {e}")

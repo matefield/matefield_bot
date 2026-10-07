@@ -1,3 +1,4 @@
+from wardogs_schemas import v1 as schemas
 import pytest
 import aiohttp
 import importlib.util
@@ -92,7 +93,7 @@ async def test_api_client_download_file_bytes():
 async def test_api_client_rewards_methods():
     client = APIClient(base_url="http://127.0.0.1:8000", api_key="secret-key")
 
-    mock_req = AsyncMock(return_value={"ok": True})
+    mock_req = AsyncMock(return_value=[{"id": 1, "code": "VIP", "name": "VIP", "description": "desc", "cost_points": 100, "is_active": True, "reward_type": "discord_role", "reward_value": "123", "delivery_type": "automatic"}])
     client._request = mock_req
 
     # 1. get_rewards_catalog
@@ -100,19 +101,23 @@ async def test_api_client_rewards_methods():
     mock_req.assert_called_with("GET", "/api/v1/rewards/catalog?only_active=True")
 
     # 2. get_player_rewards_balance
+    mock_req.return_value = {"steam_id": "123456789", "reward_points": 100, "total_seeding_minutes": 200}
     await client.get_player_rewards_balance("123456789")
     mock_req.assert_called_with("GET", "/api/v1/rewards/balance/123456789")
 
     # 3. claim_reward
+    mock_req.return_value = {"ok": True, "claim_code": "XX", "reward_name": "VIP", "reward_code": "VIP", "cost_points": 100, "remaining_points": 0, "status": "PENDING", "delivery": {"delivery_type": "AUTOMATIC"}}
     await client.claim_reward("123456789", "VIP_MONTH")
     assert mock_req.call_args[0] == ("POST", "/api/v1/rewards/claim")
     assert mock_req.call_args[1]["json"]["reward_code"] == "VIP_MONTH"
 
     # 4. verify_reward_claim
+    mock_req.return_value = {}
     await client.verify_reward_claim("MF-1111-2222")
     mock_req.assert_called_with("GET", "/api/v1/rewards/admin/verify/MF-1111-2222")
 
     # 5. deliver_reward_claim
+    mock_req.return_value = {}
     await client.deliver_reward_claim("MF-1111-2222", delivered_by="Admin#0001", notes="Key given")
     assert mock_req.call_args[0] == ("POST", "/api/v1/rewards/admin/deliver/MF-1111-2222")
 

@@ -1,3 +1,5 @@
+from datetime import datetime
+from wardogs_schemas import v1 as schemas
 import pytest
 from unittest.mock import MagicMock, AsyncMock, patch
 from src.plugins.memberships import build_player_memberships_view
@@ -368,15 +370,17 @@ async def test_player_profile_admin_vs_player(monkeypatch):
         "steam_id": "76561198058686447",
         "in_game_name": "Fr4nc0",
         "discord_id": "111222333",
-        "active_role": "VIP",
-        "special_roles": ["Fundador"],
+        "role": "VIP",
+        "roles": ["Fundador"],
         "observations": "Notas privadas de staff",
         "active_memberships": [{"type": "VIP_COMUN", "end_time": "2026-11-10T03:00:00+00:00"}]
     }
 
     plugin._client = MagicMock()
-    plugin._client.model.api.get_player_by_discord = AsyncMock(return_value={"steam_id": "76561198058686447"})
-    plugin._client.model.api.get_player_by_steam = AsyncMock(return_value=player_data)
+    plugin._client.model.api.get_player_by_discord = AsyncMock(return_value=schemas.PlayerResponse(steam_id="76561198058686447", in_game_name="Player", roles=[], created_at="2026-10-06T00:00:00Z", updated_at="2026-10-06T00:00:00Z"))
+    player_data["created_at"] = "2026-10-06T00:00:00Z"
+    player_data["updated_at"] = "2026-10-06T00:00:00Z"
+    plugin._client.model.api.get_player_by_steam = AsyncMock(return_value=schemas.PlayerResponse(**player_data))
     plugin._client.model.api.get_player_historical_stats = AsyncMock(return_value={
         "matches_played": 10, "total_kills": 20, "total_deaths": 5, "total_cash": 1000
     })
@@ -480,25 +484,25 @@ async def test_rewards_plugin_commands():
     )
 
     mock_api = MagicMock()
-    mock_api.get_player_rewards_balance = AsyncMock(return_value={
-        "steam_id": "76561198000000001",
-        "discord_id": "123456",
-        "in_game_name": "ProGamer",
-        "reward_points": 75,
-        "total_seeding_minutes": 150,
-        "claims": [{"reward_name": "Key Game", "claim_code": "MF-AAAA-BBBB", "status": "PENDING"}]
-    })
-    mock_api.get_rewards_catalog = AsyncMock(return_value=[
-        {"code": "VIP_MONTH", "name": "VIP 30d", "cost_points": 60, "delivery_type": "AUTOMATIC", "description": "Acceso VIP"},
-        {"code": "STEAM_KEY", "name": "Key Game", "cost_points": 100, "delivery_type": "MANUAL_TICKET", "description": "Ticket key"}
-    ])
-    mock_api.claim_reward = AsyncMock(return_value={
-        "claim_code": "MF-1111-2222",
-        "reward_name": "VIP 30d",
-        "cost_points": 60,
-        "remaining_points": 15,
-        "delivery": {"delivery_type": "AUTOMATIC"}
-    })
+    mock_api.get_player_rewards_balance = AsyncMock(return_value=schemas.PlayerRewardBalanceResponse(
+        steam_id="76561198000000001",
+        discord_id="123456",
+        in_game_name="ProGamer",
+        reward_points=75,
+        total_seeding_minutes=150,
+        claims=[schemas.RewardClaimResponse(id=1, steam_id="76561198000000001", reward_name="Key Game", claim_code="MF-AAAA-BBBB", status="PENDING", reward_code="STEAM_KEY", points_spent=100, claimed_at="2026-10-06T00:00:00Z")]
+    ))
+    mock_api.get_rewards_catalog = AsyncMock(return_value=[ schemas.RewardItemResponse(id=1, code="VIP_MONTH", name="VIP 30d", cost_points=60, delivery_type="AUTOMATIC", description="Acceso VIP", reward_type="VIP", reward_value="1", is_active=True), schemas.RewardItemResponse(id=2, code="STEAM_KEY", name="Key Game", cost_points=100, delivery_type="MANUAL_TICKET", description="Ticket key", reward_type="KEY", reward_value="key", is_active=True) ])
+    mock_api.claim_reward = AsyncMock(return_value=schemas.RewardClaimResultResponse(
+        ok=True,
+        claim_code="MF-1111-2222",
+        reward_name="VIP 30d",
+        cost_points=60,
+        remaining_points=15,
+        delivery=schemas.RewardClaimDeliveryInfo(delivery_type="AUTOMATIC"),
+        status="PENDING",
+        reward_code="VIP_MONTH"
+    ))
     mock_api.set_bot_config = AsyncMock(return_value={"ok": True})
     mock_api.verify_reward_claim = AsyncMock(return_value={
         "claim_code": "MF-1111-2222",

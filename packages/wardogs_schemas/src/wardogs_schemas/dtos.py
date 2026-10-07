@@ -210,6 +210,30 @@ class ExportMembershipsResponse(BaseModel):
 
 
 # ---------------------------------------------------------
+# Squad Schemas
+# ---------------------------------------------------------
+
+class SquadData(BaseModel):
+    id: str
+    name: str
+    tag: str
+    leader_steam_id: str
+    total_kills: int = 0
+    total_deaths: int = 0
+    total_cash_earned: int = 0
+    total_matches_played: int = 0
+    created_at: Optional[str] = None
+
+
+class SquadMemberData(BaseModel):
+    steam_id: str
+    in_game_name: str
+    kills: int = 0
+    deaths: int = 0
+    cash: int = 0
+
+
+# ---------------------------------------------------------
 # Rewards Schemas
 # ---------------------------------------------------------
 
@@ -273,11 +297,42 @@ class RewardClaimResponse(BaseModel):
     notes: Optional[str] = None
 
 
+class RewardClaimDeliveryInfo(BaseModel):
+    delivery_type: str
+    instructions: Optional[str] = None
+    membership_result: Optional[Dict[str, Any]] = None
+    role_result: Optional[Dict[str, Any]] = None
+
+class RewardClaimResultResponse(BaseModel):
+    ok: bool
+    claim_code: str
+    reward_code: str
+    reward_name: str
+    cost_points: int
+    remaining_points: int
+    status: str
+    delivery: RewardClaimDeliveryInfo
+
+
+class PlayerResponse(BaseModel):
+    steam_id: str
+    in_game_name: Optional[str] = None
+    discord_id: Optional[str] = None
+    role: str = "PLAYER"
+    roles: List[str] = Field(default_factory=list)
+    active_memberships: List[Dict[str, Any]] = Field(default_factory=list)
+    observations: Optional[str] = None
+    is_banned: bool = False
+    reward_points: int = 0
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+
 class PlayerRewardBalanceResponse(BaseModel):
     steam_id: str
     discord_id: Optional[str] = None
     in_game_name: Optional[str] = None
     reward_points: int
     total_seeding_minutes: int
+    next_point_minutes_left: Optional[int] = None
     active_claims: List[RewardClaimResponse] = Field(default_factory=list)
 

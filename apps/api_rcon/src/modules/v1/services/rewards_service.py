@@ -86,37 +86,26 @@ class RewardsService:
         return (await session.exec(stmt)).first()
 
     @staticmethod
-    def process_session_seeding(
-        session_obj: PlayerSession,
+    def evaluate_global_seeding(
         player_obj: Player,
-        delta_seconds: int,
-        is_seeding: bool,
         minutes_per_point: int,
         require_linked: bool = True,
     ) -> int:
         """
-        Calculates and records seeding seconds and awards reward points atomically.
+        Evaluates the global unrewarded seeding seconds of a player and awards points.
         Rewards strictly require a linked account (discord_id present).
-        Returns the number of points awarded in this tick.
+        Returns the number of points awarded in this evaluation.
         """
-        if delta_seconds <= 0:
-            return 0
-
-        session_obj.total_seconds += delta_seconds
-        if not is_seeding:
-            return 0
-
-        session_obj.seeding_seconds += delta_seconds
         if require_linked and not player_obj.discord_id:
             return 0
 
         required_seconds = max(1, minutes_per_point) * 60
-        unrewarded_seconds = session_obj.seeding_seconds - session_obj.rewarded_seeding_seconds
+        unrewarded_seconds = player_obj.global_seeding_seconds - player_obj.global_rewarded_seconds
 
         if unrewarded_seconds >= required_seconds:
             points = unrewarded_seconds // required_seconds
             player_obj.reward_points = Player.reward_points + points
-            session_obj.rewarded_seeding_seconds += points * required_seconds
+            player_obj.global_rewarded_seconds += points * required_seconds
             return points
 
         return 0
@@ -199,22 +188,9 @@ class RewardsService:
                 detail=f"El jugador '{player.steam_id}' no tiene su cuenta de Discord vinculada. Es obligatorio vincularla con /player link para participar en el sistema de recompensas.",
             )
 
-        # Calculate total seeding minutes across sessions
-        seeding_seconds_stmt = select(func.coalesce(func.sum(col(PlayerSession.seeding_seconds)), 0)).where(
-            PlayerSession.steam_id == player.steam_id
-        )
-        total_seeding_seconds = (await session.exec(seeding_seconds_stmt)).one()
-        total_seeding_minutes = int(total_seeding_seconds) // 60
-        
-        # Calculate unrewarded seconds from current session
-        current_session_stmt = select(PlayerSession).where(
-            PlayerSession.steam_id == player.steam_id,
-            PlayerSession.end_time == None
-        )
-        current_session = (await session.exec(current_session_stmt)).first()
-        unrewarded_seconds = 0
-        if current_session:
-            unrewarded_seconds = current_session.seeding_seconds - current_session.rewarded_seeding_seconds
+        # Calculate total seeding minutes
+        total_seeding_minutes = int(player.global_seeding_seconds) // 60
+        unrewarded_seconds = player.global_seeding_seconds - player.global_rewarded_seconds
             
         cfg = await session.get(BotConfig, "SEEDING_MINUTES_PER_POINT")
         minutes_per_point = int(cfg.config_value) if (cfg and cfg.config_value and cfg.config_value.isdigit()) else 30
