@@ -301,17 +301,22 @@ class SetWelcomeMessage:
             if not user_data or not user_data.steam_id:
                 await ctx.respond("❌ Debes vincular tu cuenta de Steam primero usando `/player link` o especificar a quién editar.")
                 return
-            target_steam = user_data["steam_id"]
+            target_steam = user_data.steam_id
             
         steam_data = await plugin.model.api.get_player_by_steam(str(target_steam))
-        active_role = steam_data.get("active_role") if steam_data else None
+        if not steam_data:
+            await ctx.respond("❌ Jugador no encontrado.")
+            return
+            
+        has_vip = "VIP" in steam_data.roles or "ADMIN" in steam_data.roles or steam_data.role in ["VIP", "ADMIN"]
         
-        if not active_role:
+        if not has_vip:
             await ctx.respond(f"❌ El jugador no tiene una membresía VIP o ADMIN activa. No se puede establecer el mensaje.")
             return
             
         await plugin.model.api.set_welcome_message(str(target_steam), self.message)
-        preview_msg = f"El {active_role} [Nombre en Juego] se conectó: \"{self.message}\""
+        role_label = steam_data.role if steam_data.role != "PLAYER" else "VIP"
+        preview_msg = f"El {role_label} {steam_data.in_game_name or 'Jugador'} se conectó: \"{self.message}\""
         await ctx.respond(f"✅ **Mensaje de bienvenida establecido.**\n👀 **Vista Previa:**\n> {preview_msg}")
 
 @plugin.include

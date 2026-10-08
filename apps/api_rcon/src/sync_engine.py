@@ -15,26 +15,36 @@ configuration when no DB server rows exist.
 import asyncio
 import datetime
 import logging
-from typing import Optional, Any
+from typing import Any
 
-from sqlmodel import select, col, or_
+from sqlmodel import col, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from src.connections.databases.db import engine, Player, Match, MatchPlayerStats, PlayerSession, Team, MatchTeamStats, BotConfig
 from src.connections.apis.rcon import RCONManager
-from src.connections.apis.steam import get_player_summary
+from src.connections.databases.db import (
+    BotConfig,
+    Match,
+    MatchPlayerStats,
+    MatchTeamStats,
+    Player,
+    PlayerSession,
+    Team,
+    engine,
+)
 from src.modules.v1.services.rewards_service import RewardsService
+
 
 class SyncEngineState:
     """Encapsulates the in-memory state of match tracking and map rotations."""
     def __init__(self):
-        self.current_rotation_index: Optional[int] = None
-        self.current_match_id: Optional[str] = None
-        self.current_map: Optional[str] = None
-        self.empty_since: Optional[datetime.datetime] = None
+        self.current_rotation_index: int | None = None
+        self.current_match_id: str | None = None
+        self.current_map: str | None = None
+        self.empty_since: datetime.datetime | None = None
         self.has_unvalidated_seeding_campaign: bool = True
 
 default_sync_state = SyncEngineState()
+_server_sync_states: dict[int, SyncEngineState] = {}
 
 # Polling and game sync constants
 MAX_TIME_GAP_SECONDS = 60
@@ -59,7 +69,7 @@ async def _get_int_config(session: AsyncSession, key: str, default: int) -> int:
     return default
 
 
-async def _get_or_create_team(session: AsyncSession, faction_name: Optional[str]) -> Optional[int]:
+async def _get_or_create_team(session: AsyncSession, faction_name: str | None) -> int | None:
     """Resolves or inserts a Team entity by name or short 3-letter code."""
     if not faction_name:
         return None
@@ -102,7 +112,7 @@ async def _fetch_avatars_background(steam_ids: list[str]):
                                 s.add(p)
                 if changed_any:
                     await s.commit()
-    except Exception as e:
+    except Exception as e: # noqa: BLE001
         logger.debug(f"[Sync Engine] Could not fetch steam profiles for chunk: {e}")
 
 
@@ -112,7 +122,7 @@ async def process_sync_tick(
     players: Any,
     now: datetime.datetime,
     delta_seconds: int,
-    state: Optional[SyncEngineState] = None,
+    state: SyncEngineState | None = None,
 ) -> dict[str, Any]:
     """
     Processes a single game server polling tick:
@@ -206,8 +216,7 @@ async def process_sync_tick(
                 stats.team_id = team_id
                 stats.squad_id = current_squad_id
                 current_cash = p.cash or 0
-                if current_cash > stats.cash_earned:
-                    stats.cash_earned = current_cash
+                stats.cash_earned = max(stats.cash_earned, current_cash)
             session.add(stats)
 
     # 3. Session Tracking is now moved out to be processed globally
@@ -254,7 +263,7 @@ async def process_sync_tick(
                 
                 # --- Update Squad Stats ---
                 try:
-                    from src.connections.databases.db import SquadMember, Squad
+                    from src.connections.databases.db import Squad, SquadMember
                     match_stats = (await session.exec(select(MatchPlayerStats).where(MatchPlayerStats.match_id == state.current_match_id))).all()
                     updated_squads = set()
                     
@@ -270,7 +279,7 @@ async def process_sync_tick(
                                     squad.total_matches_played += 1
                                     updated_squads.add(squad.id)
                                 session.add(squad)
-                except Exception as sq_err:
+                except Exception as sq_err: # noqa: BLE001
                     logger.error(f"[Match Engine] Error updating squad stats: {sq_err}")
                 # -------------------------
 
@@ -284,17 +293,17 @@ async def process_sync_tick(
     }
 
 
-async def poll_rcon(state: Optional[SyncEngineState] = None):
+async def poll_rcon(state: SyncEngineState | None = None):
     """Continuous polling loop querying game server status and processing sync ticks."""
     if state is None:
         state = default_sync_state
     
     logger.info("Starting RCON Polling Engine...")
-    last_poll_time = datetime.datetime.now(datetime.timezone.utc)
+    last_poll_time = datetime.datetime.now(datetime.UTC)
     
     while True:
         try:
-            now = datetime.datetime.now(datetime.timezone.utc)
+            now = datetime.datetime.now(datetime.UTC)
             delta_seconds = int((now - last_poll_time).total_seconds())
             
             if delta_seconds < 0:
@@ -322,10 +331,7 @@ async def poll_rcon(state: Optional[SyncEngineState] = None):
                 
                 active_servers = await RCONManager.get_all_active_servers(session)
                 
-                # Check states dict (it acts per server)
-                if not hasattr(poll_rcon, "states"):
-                    poll_rcon.states = {}
-                states = poll_rcon.states
+                states = _server_sync_states
 
                 sleep_time = DEFAULT_POLL_INTERVAL_SECONDS
 
@@ -354,43 +360,17 @@ async def poll_rcon(state: Optional[SyncEngineState] = None):
                                     seeding_servers_steam_ids.add(p.steamId)
 
                         # --- Seeding Campaign Evaluation ---
-                        if is_seeding and current_players_count > 0:
-                            state.has_unvalidated_seeding_campaign = True
-                            state.empty_since = None
-
-                        if current_players_count >= seeding_threshold:
-                            state.empty_since = None
-                            if state.has_unvalidated_seeding_campaign:
-                                # Campaign SUCCEEDED! Validate pending seconds for this server
-                                unvalidated_stmt = select(PlayerSession).where(
-                                    PlayerSession.server_id == s_id, 
-                                    PlayerSession.seeding_seconds > PlayerSession.rewarded_seeding_seconds
-                                )
-                                for s in (await session.exec(unvalidated_stmt)).all():
-                                    untransferred = s.seeding_seconds - s.rewarded_seeding_seconds
-                                    db_p = await session.get(Player, s.steam_id)
-                                    if db_p:
-                                        db_p.global_seeding_seconds += untransferred
-                                        s.rewarded_seeding_seconds += untransferred
-                                        RewardsService.evaluate_global_seeding(db_p, minutes_per_point)
-                                        session.add(db_p)
-                                    session.add(s)
-                                state.has_unvalidated_seeding_campaign = False
-
-                        elif current_players_count == 0:
-                            if state.empty_since is None:
-                                state.empty_since = now
-                            elif (now - state.empty_since).total_seconds() > 300: # 5 minutes grace period
-                                if state.has_unvalidated_seeding_campaign:
-                                    # Campaign FAILED! Discard pending seconds for this server
-                                    failed_stmt = select(PlayerSession).where(
-                                        PlayerSession.server_id == s_id, 
-                                        PlayerSession.seeding_seconds > PlayerSession.rewarded_seeding_seconds
-                                    )
-                                    for s in (await session.exec(failed_stmt)).all():
-                                        s.seeding_seconds = s.rewarded_seeding_seconds
-                                        session.add(s)
-                                    state.has_unvalidated_seeding_campaign = False
+                        await RewardsService.process_server_seeding_campaign(
+                            session=session,
+                            server_id=s_id,
+                            state=state,
+                            current_players_count=current_players_count,
+                            is_seeding=is_seeding,
+                            seeding_threshold=seeding_threshold,
+                            seeding_min_to_count=seeding_min_to_count,
+                            minutes_per_point=minutes_per_point,
+                            now=now
+                        )
                         # ------------------------------------
 
                         if status and status.scoreTick and status.scoreCap:
@@ -398,7 +378,7 @@ async def poll_rcon(state: Optional[SyncEngineState] = None):
                             if tick_current >= (status.scoreCap - FAST_POLL_TICKS_REMAINING):
                                 sleep_time = FAST_POLL_INTERVAL_SECONDS
                                 
-                    except Exception as e:
+                    except Exception as e: # noqa: BLE001
                         logger.error(f"[Match Engine] Error polling server {server.name}: {e}")
                 
                 # Global Session Tracking
@@ -444,6 +424,6 @@ async def poll_rcon(state: Optional[SyncEngineState] = None):
 
             await asyncio.sleep(sleep_time)
 
-        except Exception as e:
-            logger.error("[Match Engine] Error polling RCON in sync_engine: %s", e, exc_info=True)
+        except Exception as e: # noqa: BLE001
+            logger.exception("[Match Engine] Error polling RCON in sync_engine: %s", e)
             await asyncio.sleep(DEFAULT_POLL_INTERVAL_SECONDS)

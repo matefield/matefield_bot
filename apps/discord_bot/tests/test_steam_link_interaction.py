@@ -1,11 +1,11 @@
-from datetime import datetime
-from wardogs_schemas import v1 as schemas
 from unittest.mock import AsyncMock, MagicMock
-from urllib.parse import urlparse, parse_qs
+from urllib.parse import parse_qs, urlparse
+
 import hikari
 import pytest
-from wardogs_schemas.steam_token import verify_steam_link_token
 from src.plugins import account
+from wardogs_schemas import v1 as schemas
+from wardogs_schemas.steam_token import verify_steam_link_token
 
 A, B = 123456789012345678, 223456789012345678
 
@@ -50,6 +50,7 @@ async def test_persistent_handler_uses_each_clickers_identity_and_private_respon
         link = row.add_link_button.call_args.args[0]
         assert len(link) <= 512
         payload = verify_steam_link_token(parse_qs(urlparse(link).query)["token"][0], "test_key")
+        assert payload is not None
         assert payload["discord_id"] == str(user_id)
         assert "web_session_id" not in payload
         assert row.add_link_button.call_args.kwargs["label"] == "Ir a Steam"
@@ -98,9 +99,10 @@ def test_panel_is_green_and_persistent(client):
 def test_link_length_does_not_depend_on_unicode_name_or_avatar(client):
     user = MagicMock(id=A, global_name="😀" * 32, username="long_username" * 3,
                      discriminator="0", display_avatar_url="https://cdn.discordapp.com/avatars/" + "a" * 150)
-    link = account._build_user_steam_link(user, 1552776537772920963)
+    link = account._build_user_steam_link(user, hikari.Snowflake(1552776537772920963))
     assert len(link) <= 512
     payload = verify_steam_link_token(parse_qs(urlparse(link).query)["token"][0], "test_key")
+    assert payload is not None
     assert payload["discord_id"] == str(A)
     assert "discord_avatar" not in payload
 

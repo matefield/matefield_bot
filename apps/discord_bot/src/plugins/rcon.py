@@ -72,6 +72,9 @@ class RconAdd:
             )
 
             server = result.server
+            if not server:
+                await ctx.respond("❌ Servidor registrado, pero no se devolvieron detalles.")
+                return
             embed = hikari.Embed(
                 title="✅ Servidor RCON Registrado",
                 color=0x2ECC71
@@ -159,7 +162,10 @@ class RconEdit:
                 return
 
             res = await plugin.model.api.update_rcon_server(self.server_id, **update_payload)
-            await ctx.respond(f"✅ Servidor `{self.server_id}` (**{res.server.name}**) actualizado correctamente.")
+            if res.server:
+                await ctx.respond(f"✅ Servidor `{self.server_id}` (**{res.server.name}**) actualizado correctamente.")
+            else:
+                await ctx.respond(f"✅ Servidor `{self.server_id}` actualizado correctamente.")
         except Exception as e:
             logger.exception("Error editando servidor RCON")
             await ctx.respond(f"❌ Error al actualizar servidor: {format_api_error(e)}")

@@ -14,7 +14,7 @@ from src.trace import get_tracer
 logger = logging.getLogger(__name__)
 plugin = crescent.Plugin[hikari.GatewayBot, Model]()
 
-_cached_types: list[dict] = []
+_cached_types: list[Any] = []
 _last_types_fetch: float = 0.0
 _types_lock = asyncio.Lock()
 
@@ -439,7 +439,8 @@ class DbEditMembership:
                 is_booster=self.booster
             )
             from src.plugins.tasks import execute_membership_sync
-            asyncio.create_task(execute_membership_sync(ctx.app, plugin.model, target_guild_id=ctx.guild_id))
+            import typing
+            asyncio.create_task(execute_membership_sync(typing.cast(hikari.GatewayBot, ctx.app), plugin.model, target_guild_id=ctx.guild_id))
             await ctx.respond(f"✅ Membresía ID {self.id_membresia} actualizada exitosamente. 🔄 Sincronizando en segundo plano...")
         except Exception as e:
             await ctx.respond(f"❌ Error: {e}")
@@ -457,7 +458,8 @@ class DbRemoveMembership:
         try:
             await plugin.model.api.delete_membership(self.id_membresia)
             from src.plugins.tasks import execute_membership_sync
-            asyncio.create_task(execute_membership_sync(ctx.app, plugin.model, target_guild_id=ctx.guild_id))
+            import typing
+            asyncio.create_task(execute_membership_sync(typing.cast(hikari.GatewayBot, ctx.app), plugin.model, target_guild_id=ctx.guild_id))
             await ctx.respond(f"✅ Membresía ID {self.id_membresia} eliminada exitosamente. 🔄 Sincronizando en segundo plano...")
         except Exception as e:
             await ctx.respond(f"❌ Error: {e}")
@@ -603,7 +605,8 @@ class ExtenderMembresia:
         try:
             await plugin.model.api.edit_membership(membership_id=self.membership_id, add_days=self.dias)
             from src.plugins.tasks import execute_membership_sync
-            asyncio.create_task(execute_membership_sync(ctx.app, plugin.model, target_guild_id=ctx.guild_id))
+            import typing
+            asyncio.create_task(execute_membership_sync(typing.cast(hikari.GatewayBot, ctx.app), plugin.model, target_guild_id=ctx.guild_id))
             await ctx.respond(f"✅ Membresía #{self.membership_id} extendida por {self.dias} días exitosamente. 🔄 Sincronizando en segundo plano...")
         except Exception as e:
             await ctx.respond(f"❌ Error al extender membresía: {e}")
@@ -665,7 +668,7 @@ class DbMembershipTypeList:
                     f"🛡️ **Rol:** {role_str}\n"
                     f"🏷️ **Estado:** {status_icon}"
                 )
-                embed.add_field(name=f"#{t.get('id')} - {name} (`{code}`)", value=field_value, inline=True)
+                embed.add_field(name=f"#{t.id} - {name} (`{code}`)", value=field_value, inline=True)
 
             await ctx.respond(embed=embed)
         except Exception as e:

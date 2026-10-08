@@ -385,12 +385,12 @@ async def _resolve_ban_targets(
     if target_discord_id and not target_steam_id:
         db_player = await plugin.model.api.get_player_by_discord(str(target_discord_id))
         if db_player and db_player.steam_id:
-            target_steam_id = str(db_player["steam_id"])
+            target_steam_id = str(db_player.steam_id)
             
     if target_steam_id and not target_discord_id:
         db_player = await plugin.model.api.get_player_by_steam(target_steam_id)
         if db_player and db_player.discord_id:
-            target_discord_id = int(db_player["discord_id"])
+            target_discord_id = int(db_player.discord_id)
             
     return target_discord_id, target_steam_id
 

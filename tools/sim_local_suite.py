@@ -136,7 +136,7 @@ class SimulationRunner:
 
         # Verificar consulta por Discord ID
         p_by_dc = await self.client.get_player_by_discord(self.test_discord_id)
-        self.assert_true(p_by_dc is not None and p_by_dc.get("steam_id") == self.test_steam_id, "get_player_by_discord retorna el SteamID vinculado")
+        self.assert_true(p_by_dc is not None and p_by_dc.steam_id == self.test_steam_id, "get_player_by_discord retorna el SteamID vinculado")
 
         # Intentar vincular la misma cuenta de Discord a otro SteamID distinto -> debe fallar con 400
         duplicate_prevented = False
@@ -153,7 +153,7 @@ class SimulationRunner:
         self.assert_true(len(catalog) >= 2, f"Catálogo contiene {len(catalog)} recompensas registradas")
         
         # Verificar ordenamiento por puntos ascendente
-        costs = [item["cost_points"] for item in catalog]
+        costs = [item.cost_points for item in catalog]
         self.assert_true(costs == sorted(costs), "Catálogo ordenado correctamente por costo de puntos ascendente")
 
         # Verificar configuración de seeding
@@ -186,7 +186,7 @@ class SimulationRunner:
     async def test_rewards_points_and_boundary_checks(self):
         logger.info("\n--- 7. Ajuste de Puntos y Validación de Límites (Boundaries) ---")
         balance = await self.client.get_player_rewards_balance(self.test_discord_id)
-        initial_points = balance.get("reward_points", 0)
+        initial_points = balance.reward_points
 
         # Añadir 250 puntos
         adj_resp = await self.client.give_reward_points(self.test_discord_id, 250, reason="Bono de simulación")
@@ -203,7 +203,7 @@ class SimulationRunner:
 
         # Verificar que el balance sigue intacto
         balance_check = await self.client.get_player_rewards_balance(self.test_discord_id)
-        self.assert_true(balance_check.get("reward_points") == initial_points + 250, "Balance se mantiene íntegro tras rechazo")
+        self.assert_true(balance_check.reward_points == initial_points + 250, "Balance se mantiene íntegro tras rechazo")
 
     async def test_rewards_claim_automatic_vip(self):
         logger.info("\n--- 8. Canje Automático de Recompensa (Membresía / VIP) ---")
@@ -212,8 +212,8 @@ class SimulationRunner:
         
         # Canjear VIP_SEED (cuesta 100 puntos en catálogo por defecto)
         claim_result = await self.client.claim_reward(self.test_discord_id, "VIP_SEED")
-        self.assert_true(claim_result.get("delivery", {}).get("delivery_type") == "AUTOMATIC", "Entrega automática para VIP")
-        self.assert_true(claim_result.get("claim_code") is not None, f"Código de canje generado: {claim_result.get('claim_code')}")
+        self.assert_true(claim_result.delivery.delivery_type == "AUTOMATIC", "Entrega automática para VIP")
+        self.assert_true(claim_result.claim_code is not None, f"Código de canje generado: {claim_result.claim_code}")
         
         # Verificar que se creó la membresía activa en DB
         m_resp = await self.client.get_paginated_memberships(discord_id=self.test_discord_id)
@@ -236,12 +236,12 @@ class SimulationRunner:
         )
 
         # Consultar balance antes del canje
-        bal_before = (await self.client.get_player_rewards_balance(self.test_discord_id)).get("reward_points", 0)
+        bal_before = (await self.client.get_player_rewards_balance(self.test_discord_id)).reward_points
 
         # Canjear
         claim_res = await self.client.claim_reward(self.test_discord_id, "CUSTOM_TACTICAL_SKIN")
-        claim_code = claim_res["claim_code"]
-        self.assert_true(claim_res["delivery"]["delivery_type"] == "MANUAL_TICKET", "Tipo de entrega MANUAL_TICKET detectado")
+        claim_code = claim_res.claim_code
+        self.assert_true(claim_res.delivery.delivery_type == "MANUAL_TICKET", "Tipo de entrega MANUAL_TICKET detectado")
         self.assert_true(claim_code.startswith("MF-"), f"Formato de código ticket correcto: {claim_code}")
 
         # Verificar canje con el endpoint de verificación admin
@@ -253,7 +253,7 @@ class SimulationRunner:
         self.assert_true(refund_res.get("new_status") == "REFUNDED", "Estado actualizado a REFUNDED")
         
         # Verificar que los 50 puntos volvieron a la cuenta del jugador
-        bal_after = (await self.client.get_player_rewards_balance(self.test_discord_id)).get("reward_points", 0)
+        bal_after = (await self.client.get_player_rewards_balance(self.test_discord_id)).reward_points
         self.assert_true(bal_after == bal_before, f"Puntos reembolsados correctamente (Antes={bal_before}, Después={bal_after})")
 
     async def test_sync_engine_and_roles(self):

@@ -380,7 +380,7 @@ async def test_player_profile_admin_vs_player(monkeypatch):
     plugin._client.model.api.get_player_by_discord = AsyncMock(return_value=schemas.PlayerResponse(steam_id="76561198058686447", in_game_name="Player", roles=[], created_at="2026-10-06T00:00:00Z", updated_at="2026-10-06T00:00:00Z"))
     player_data["created_at"] = "2026-10-06T00:00:00Z"
     player_data["updated_at"] = "2026-10-06T00:00:00Z"
-    plugin._client.model.api.get_player_by_steam = AsyncMock(return_value=schemas.PlayerResponse(**player_data))
+    plugin._client.model.api.get_player_by_steam = AsyncMock(return_value=schemas.PlayerResponse.model_validate(player_data))
     plugin._client.model.api.get_player_historical_stats = AsyncMock(return_value={
         "matches_played": 10, "total_kills": 20, "total_deaths": 5, "total_cash": 1000
     })
@@ -490,7 +490,7 @@ async def test_rewards_plugin_commands():
         in_game_name="ProGamer",
         reward_points=75,
         total_seeding_minutes=150,
-        claims=[schemas.RewardClaimResponse(id=1, steam_id="76561198000000001", reward_name="Key Game", claim_code="MF-AAAA-BBBB", status="PENDING", reward_code="STEAM_KEY", points_spent=100, claimed_at="2026-10-06T00:00:00Z")]
+        active_claims=[schemas.RewardClaimResponse(id=1, steam_id="76561198000000001", reward_name="Key Game", claim_code="MF-AAAA-BBBB", status="PENDING", reward_code="STEAM_KEY", points_spent=100, claimed_at="2026-10-06T00:00:00Z")]
     ))
     mock_api.get_rewards_catalog = AsyncMock(return_value=[ schemas.RewardItemResponse(id=1, code="VIP_MONTH", name="VIP 30d", cost_points=60, delivery_type="AUTOMATIC", description="Acceso VIP", reward_type="VIP", reward_value="1", is_active=True), schemas.RewardItemResponse(id=2, code="STEAM_KEY", name="Key Game", cost_points=100, delivery_type="MANUAL_TICKET", description="Ticket key", reward_type="KEY", reward_value="key", is_active=True) ])
     mock_api.claim_reward = AsyncMock(return_value=schemas.RewardClaimResultResponse(

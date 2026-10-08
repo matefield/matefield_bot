@@ -47,6 +47,10 @@ async def clone_data(target_name: str, target_url: str, prod_url: str):
     match_player_stats = await fetch_table_rows(prod_engine, "match_player_stats")
     player_sessions = await fetch_table_rows(prod_engine, "player_sessions")
     rcon_servers = await fetch_table_rows(prod_engine, "rcon_servers")
+    try:
+        payment_records = await fetch_table_rows(prod_engine, "payment_records")
+    except Exception:
+        payment_records = []
 
     await prod_engine.dispose()
 

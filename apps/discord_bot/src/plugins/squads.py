@@ -35,7 +35,7 @@ async def squad_autocomplete(
 ) -> list[tuple[str, str]]:
     try:
         player = await plugin.model.api.get_player_by_discord(str(ctx.user.id))
-        steam_id = player.steam_id
+        steam_id = player.steam_id if player else None
         if not steam_id:
             return []
         squads = await plugin.model.api.get_player_squads(steam_id)
@@ -49,10 +49,13 @@ async def squad_autocomplete(
     except Exception:
         return []
 
-async def get_steam_id_from_member(member: hikari.Member, ctx: crescent.Context) -> str:
+async def get_steam_id_from_member(member: hikari.Member | None, ctx: crescent.Context) -> str:
+    if not member:
+        await ctx.respond("❌ Este comando solo se puede usar en el servidor.", ephemeral=True)
+        return ""
     try:
         player = await plugin.model.api.get_player_by_discord(str(member.id))
-        return player.steam_id
+        return player.steam_id if player and player.steam_id else ""
     except Exception:
         await ctx.respond("❌ No estás vinculado a una cuenta de Steam. Usa `/player link` primero.", ephemeral=True)
         return ""
@@ -95,12 +98,12 @@ class SquadMembers:
         await ctx.defer()
         try:
             if self.unidad:
-                squad = await plugin.model.api.get_squad_by_tag(self.unidad)
+                squad = await plugin.model.api.get_squad_by_tag(str(self.unidad))
             else:
                 steam_id = await get_steam_id_from_member(ctx.member, ctx)
                 if not steam_id:
                     return
-                squad = await resolve_target_squad(ctx, steam_id)
+                squad = await resolve_target_squad(ctx, steam_id, str(self.unidad) if self.unidad else None)
                 
             members = await plugin.model.api.get_squad_members(squad.id)
             desc = f"**Líder:** {squad.leader_steam_id}\n\n"
@@ -125,7 +128,7 @@ class SquadInfo:
             return
 
         try:
-            squad = await resolve_target_squad(ctx, steam_id, self.unidad)
+            squad = await resolve_target_squad(ctx, steam_id, str(self.unidad) if self.unidad else None)
             
             embed = hikari.Embed(
                 title=f"🛡️ [{squad.tag}] {squad.name}",
@@ -161,7 +164,7 @@ class SquadLeave:
             return
 
         try:
-            squad = await resolve_target_squad(ctx, steam_id, self.unidad)
+            squad = await resolve_target_squad(ctx, steam_id, str(self.unidad) if self.unidad else None)
             await plugin.model.api.remove_squad_member(squad.id, steam_id)
             await ctx.respond(f"✅ Has abandonado el pelotón **{squad.name}**.")
         except Exception as e:
@@ -180,7 +183,7 @@ class SquadDisband:
             return
 
         try:
-            squad = await resolve_target_squad(ctx, steam_id, self.unidad)
+            squad = await resolve_target_squad(ctx, steam_id, str(self.unidad) if self.unidad else None)
             if str(squad.leader_steam_id) != str(steam_id):
                 await ctx.respond("❌ Solo el líder del pelotón puede disolverlo. Usa `/squad leave_squad` en su lugar.")
                 return
@@ -208,7 +211,7 @@ class SquadLeaderboard:
     async def callback(self, ctx: crescent.Context) -> None:
         await ctx.defer()
         try:
-            squads = await plugin.model.api.get_squad_leaderboard(self.sort_by)
+            squads = await plugin.model.api.get_squad_leaderboard(str(self.sort_by))
             if not squads:
                 await ctx.respond("Aún no hay pelotones registrados.")
                 return
@@ -220,7 +223,7 @@ class SquadLeaderboard:
                 desc += f"{medal} **[{sq.tag}] {sq.name}**\n"
                 desc += f"└ ⚔️ {sq.total_kills} Kills | 💀 {sq.total_deaths} Muertes | 💸 ${sq.total_cash_earned:,} | 📈 KD: {kd:.2f} | 🎮 {sq.total_matches_played} Partidas\n\n"
                 
-            embed = hikari.Embed(title=f"🏆 Top Pelotones (Por {self.sort_by.capitalize()})", description=desc, color=UIColors.GOLD)
+            embed = hikari.Embed(title=f"🏆 Top Pelotones (Por {str(self.sort_by).capitalize()})", description=desc, color=UIColors.GOLD)
             await ctx.respond(embed=embed)
         except Exception as e:
             await ctx.respond(f"❌ Error al cargar leaderboard: {format_api_error(e)}")
@@ -237,8 +240,8 @@ class SquadInviteMember:
         if not steam_id:
             return
 
-        if self.usuario.id == ctx.member.id:
-            await ctx.respond("❌ No puedes invitarte a ti mismo.")
+        if not ctx.member or self.usuario.id == ctx.member.id:
+            await ctx.respond("❌ No puedes invitarte a ti mismo (o estás en un canal inválido).")
             return
 
         try:
@@ -249,7 +252,7 @@ class SquadInviteMember:
 
             # Check if target is linked
             target_player = await plugin.model.api.get_player_by_discord(str(self.usuario.id))
-            if not target_player.steam_id:
+            if not target_player or not target_player.steam_id:
                 await ctx.respond(f"❌ {self.usuario.mention} no está vinculado a Steam.")
                 return
 
@@ -263,7 +266,7 @@ class SquadInviteMember:
 
             embed = hikari.Embed(
                 title="📩 Invitación a Pelotón",
-                description=f"**{ctx.member.username}** te ha invitado a unirte al pelotón **[{squad.tag}] {squad.name}**.\n\n¿Aceptas la invitación?",
+                description=f"**{ctx.user.username}** te ha invitado a unirte al pelotón **[{squad.tag}] {squad.name}**.\n\n¿Aceptas la invitación?",
                 color=UIColors.BLUE
             )
 
@@ -301,7 +304,7 @@ async def on_squad_invite_button(event: hikari.InteractionCreateEvent) -> None:
     await event.interaction.create_initial_response(hikari.ResponseType.DEFERRED_MESSAGE_UPDATE)
     try:
         player = await plugin.model.api.get_player_by_discord(discord_id)
-        steam_id = player.steam_id
+        steam_id = player.steam_id if player else None
         if not steam_id:
             await event.interaction.edit_initial_response(content="❌ Tu cuenta ya no está vinculada a Steam.", components=[])
             return
@@ -322,18 +325,21 @@ class SquadKickMember:
 
     async def callback(self, ctx: crescent.Context) -> None:
         await ctx.defer()
+        if not ctx.member:
+            await ctx.respond("❌ Este comando solo se puede usar en el servidor.")
+            return
         steam_id = await get_steam_id_from_member(ctx.member, ctx)
         if not steam_id:
             return
 
         try:
-            squad = await resolve_target_squad(ctx, steam_id, self.unidad)
+            squad = await resolve_target_squad(ctx, steam_id, str(self.unidad) if self.unidad else None)
             if str(squad.leader_steam_id) != str(steam_id):
                 await ctx.respond("❌ Solo el líder del pelotón puede expulsar jugadores.")
                 return
 
             target_player = await plugin.model.api.get_player_by_discord(str(self.usuario.id))
-            target_steam_id = target_player.steam_id
+            target_steam_id = target_player.steam_id if target_player else None
             if not target_steam_id:
                 await ctx.respond(f"❌ {self.usuario.mention} no tiene cuenta vinculada.")
                 return
@@ -376,7 +382,7 @@ class AdminSquadRemoveMember:
         await ctx.defer()
         try:
             target_player = await plugin.model.api.get_player_by_discord(str(self.usuario.id))
-            target_steam_id = target_player.steam_id
+            target_steam_id = target_player.steam_id if target_player else None
             if not target_steam_id:
                 await ctx.respond(f"❌ {self.usuario.mention} no tiene cuenta vinculada.")
                 return
@@ -397,14 +403,17 @@ class SquadInternalLeaderboard:
         await ctx.defer()
         try:
             if self.unidad:
-                squad = await plugin.model.api.get_squad_by_tag(self.unidad)
+                squad = await plugin.model.api.get_squad_by_tag(str(self.unidad))
             else:
+                if not ctx.member:
+                    await ctx.respond("❌ Este comando solo se puede usar en el servidor.")
+                    return
                 steam_id = await get_steam_id_from_member(ctx.member, ctx)
                 if not steam_id:
                     return
                 squad = await resolve_target_squad(ctx, steam_id)
                 
-            lb = await plugin.model.api.get_squad_internal_leaderboard(squad.id, self.sort_by)
+            lb = await plugin.model.api.get_squad_internal_leaderboard(str(squad.id), str(self.sort_by))
             
             if not lb:
                 await ctx.respond("No hay estadísticas para este pelotón.")
@@ -425,7 +434,7 @@ class SquadInternalLeaderboard:
             sort_names = {"kills": "Kills", "deaths": "Muertes", "cash": "Dinero"}
             
             embed = hikari.Embed(
-                title=f"🏆 Top [{squad.tag}] {squad.name} - Por {sort_names[self.sort_by]}", 
+                title=f"🏆 Top [{squad.tag}] {squad.name} - Por {sort_names[str(self.sort_by)]}", 
                 description=desc, 
                 color=UIColors.GOLD
             )

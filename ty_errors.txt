@@ -1,0 +1,1325 @@
+error[invalid-argument-type]: Argument to function `create_async_engine` is incorrect
+  --> apps\api_rcon\src\connections\databases\migrations\env.py:84:9
+   |
+84 |         url,
+   |         ^^^ Expected `str | URL`, found `str | None`
+info: element `None` of union `str | None` is not assignable to `str | URL`
+info: Function defined here
+  --> .venv\Lib\site-packages\sqlalchemy\ext\asyncio\engine.py:70:5
+   |
+70 | def create_async_engine(url: Union[str, URL], **kw: Any) -> AsyncEngine:
+   |     ^^^^^^^^^^^^^^^^^^^ -------------------- Parameter declared here
+
+warning[possibly-missing-submodule]: Submodule `sqltypes` might not have been imported
+  --> apps\api_rcon\src\connections\databases\migrations\versions\0e7d9f2ccf83_add_role_type_and_ddd_role_schema.py:31:46
+   |
+31 |     op.add_column('roles', sa.Column('code', sqlmodel.sql.sqltypes.AutoString(), nullable=True))
+   |                                              ^^^^^^^^^^^^^^^^^^^^^
+help: Consider explicitly importing `sqlmodel.sql.sqltypes`
+
+warning[possibly-missing-submodule]: Submodule `sqltypes` might not have been imported
+  --> apps\api_rcon\src\connections\databases\migrations\versions\0e7d9f2ccf83_add_role_type_and_ddd_role_schema.py:32:57
+   |
+32 |     op.add_column('roles', sa.Column('discord_role_id', sqlmodel.sql.sqltypes.AutoString(), nullable=True))
+   |                                                         ^^^^^^^^^^^^^^^^^^^^^
+help: Consider explicitly importing `sqlmodel.sql.sqltypes`
+
+warning[possibly-missing-submodule]: Submodule `sqltypes` might not have been imported
+  --> apps\api_rcon\src\connections\databases\migrations\versions\0e7d9f2ccf83_add_role_type_and_ddd_role_schema.py:45:52
+   |
+45 |     op.alter_column('roles', 'code', existing_type=sqlmodel.sql.sqltypes.AutoString(), nullable=False)
+   |                                                    ^^^^^^^^^^^^^^^^^^^^^
+help: Consider explicitly importing `sqlmodel.sql.sqltypes`
+
+warning[possibly-missing-submodule]: Submodule `sqltypes` might not have been imported
+  --> apps\api_rcon\src\connections\databases\migrations\versions\2281fd6205e6_add_squads_tables.py:26:21
+   |
+26 |     sa.Column('id', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
+   |                     ^^^^^^^^^^^^^^^^^^^^^
+help: Consider explicitly importing `sqlmodel.sql.sqltypes`
+
+warning[possibly-missing-submodule]: Submodule `sqltypes` might not have been imported
+  --> apps\api_rcon\src\connections\databases\migrations\versions\2281fd6205e6_add_squads_tables.py:27:23
+   |
+27 |     sa.Column('name', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
+   |                       ^^^^^^^^^^^^^^^^^^^^^
+help: Consider explicitly importing `sqlmodel.sql.sqltypes`
+
+warning[possibly-missing-submodule]: Submodule `sqltypes` might not have been imported
+  --> apps\api_rcon\src\connections\databases\migrations\versions\2281fd6205e6_add_squads_tables.py:28:22
+   |
+28 |     sa.Column('tag', sqlmodel.sql.sqltypes.AutoString(length=4), nullable=False),
+   |                      ^^^^^^^^^^^^^^^^^^^^^
+help: Consider explicitly importing `sqlmodel.sql.sqltypes`
+
+warning[possibly-missing-submodule]: Submodule `sqltypes` might not have been imported
+  --> apps\api_rcon\src\connections\databases\migrations\versions\2281fd6205e6_add_squads_tables.py:29:34
+   |
+29 |     sa.Column('leader_steam_id', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
+   |                                  ^^^^^^^^^^^^^^^^^^^^^
+help: Consider explicitly importing `sqlmodel.sql.sqltypes`
+
+warning[possibly-missing-submodule]: Submodule `sqltypes` might not have been imported
+  --> apps\api_rcon\src\connections\databases\migrations\versions\2281fd6205e6_add_squads_tables.py:42:21
+   |
+42 |     sa.Column('id', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
+   |                     ^^^^^^^^^^^^^^^^^^^^^
+help: Consider explicitly importing `sqlmodel.sql.sqltypes`
+
+warning[possibly-missing-submodule]: Submodule `sqltypes` might not have been imported
+  --> apps\api_rcon\src\connections\databases\migrations\versions\2281fd6205e6_add_squads_tables.py:43:27
+   |
+43 |     sa.Column('squad_id', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
+   |                           ^^^^^^^^^^^^^^^^^^^^^
+help: Consider explicitly importing `sqlmodel.sql.sqltypes`
+
+warning[possibly-missing-submodule]: Submodule `sqltypes` might not have been imported
+  --> apps\api_rcon\src\connections\databases\migrations\versions\2281fd6205e6_add_squads_tables.py:44:35
+   |
+44 |     sa.Column('inviter_steam_id', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
+   |                                   ^^^^^^^^^^^^^^^^^^^^^
+help: Consider explicitly importing `sqlmodel.sql.sqltypes`
+
+warning[possibly-missing-submodule]: Submodule `sqltypes` might not have been imported
+  --> apps\api_rcon\src\connections\databases\migrations\versions\2281fd6205e6_add_squads_tables.py:45:37
+   |
+45 |     sa.Column('invitee_discord_id', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
+   |                                     ^^^^^^^^^^^^^^^^^^^^^
+help: Consider explicitly importing `sqlmodel.sql.sqltypes`
+
+warning[possibly-missing-submodule]: Submodule `sqltypes` might not have been imported
+  --> apps\api_rcon\src\connections\databases\migrations\versions\2281fd6205e6_add_squads_tables.py:46:25
+   |
+46 |     sa.Column('status', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
+   |                         ^^^^^^^^^^^^^^^^^^^^^
+help: Consider explicitly importing `sqlmodel.sql.sqltypes`
+
+warning[possibly-missing-submodule]: Submodule `sqltypes` might not have been imported
+  --> apps\api_rcon\src\connections\databases\migrations\versions\2281fd6205e6_add_squads_tables.py:55:27
+   |
+55 |     sa.Column('squad_id', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
+   |                           ^^^^^^^^^^^^^^^^^^^^^
+help: Consider explicitly importing `sqlmodel.sql.sqltypes`
+
+warning[possibly-missing-submodule]: Submodule `sqltypes` might not have been imported
+  --> apps\api_rcon\src\connections\databases\migrations\versions\2281fd6205e6_add_squads_tables.py:56:27
+   |
+56 |     sa.Column('steam_id', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
+   |                           ^^^^^^^^^^^^^^^^^^^^^
+help: Consider explicitly importing `sqlmodel.sql.sqltypes`
+
+warning[possibly-missing-submodule]: Submodule `sqltypes` might not have been imported
+  --> apps\api_rcon\src\connections\databases\migrations\versions\47312279a0c3_add_is_active_and_rcon_sync_status_to_.py:26:57
+   |
+26 |     op.add_column('bans', sa.Column('rcon_sync_status', sqlmodel.sql.sqltypes.AutoString(), nullable=False))
+   |                                                         ^^^^^^^^^^^^^^^^^^^^^
+help: Consider explicitly importing `sqlmodel.sql.sqltypes`
+
+warning[possibly-missing-submodule]: Submodule `sqltypes` might not have been imported
+  --> apps\api_rcon\src\connections\databases\migrations\versions\6c53688397d0_add_playersession_rename_cash.py:25:25
+   |
+25 |         sa.Column('id', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
+   |                         ^^^^^^^^^^^^^^^^^^^^^
+help: Consider explicitly importing `sqlmodel.sql.sqltypes`
+
+warning[possibly-missing-submodule]: Submodule `sqltypes` might not have been imported
+  --> apps\api_rcon\src\connections\databases\migrations\versions\6c53688397d0_add_playersession_rename_cash.py:26:31
+   |
+26 |         sa.Column('steam_id', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
+   |                               ^^^^^^^^^^^^^^^^^^^^^
+help: Consider explicitly importing `sqlmodel.sql.sqltypes`
+
+warning[possibly-missing-submodule]: Submodule `sqltypes` might not have been imported
+  --> apps\api_rcon\src\connections\databases\migrations\versions\7ea26e120206_add_player_fields.py:25:56
+   |
+25 |     op.add_column('players', sa.Column('in_game_name', sqlmodel.sql.sqltypes.AutoString(), nullable=True))
+   |                                                        ^^^^^^^^^^^^^^^^^^^^^
+help: Consider explicitly importing `sqlmodel.sql.sqltypes`
+
+warning[possibly-missing-submodule]: Submodule `sqltypes` might not have been imported
+  --> apps\api_rcon\src\connections\databases\migrations\versions\7ea26e120206_add_player_fields.py:26:54
+   |
+26 |     op.add_column('players', sa.Column('avatar_url', sqlmodel.sql.sqltypes.AutoString(), nullable=True))
+   |                                                      ^^^^^^^^^^^^^^^^^^^^^
+help: Consider explicitly importing `sqlmodel.sql.sqltypes`
+
+warning[possibly-missing-submodule]: Submodule `sqltypes` might not have been imported
+  --> apps\api_rcon\src\connections\databases\migrations\versions\8711d6c5c582_initial_aware.py:26:29
+   |
+26 |     sa.Column('config_key', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
+   |                             ^^^^^^^^^^^^^^^^^^^^^
+help: Consider explicitly importing `sqlmodel.sql.sqltypes`
+
+warning[possibly-missing-submodule]: Submodule `sqltypes` might not have been imported
+  --> apps\api_rcon\src\connections\databases\migrations\versions\8711d6c5c582_initial_aware.py:27:31
+   |
+27 |     sa.Column('config_value', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
+   |                               ^^^^^^^^^^^^^^^^^^^^^
+help: Consider explicitly importing `sqlmodel.sql.sqltypes`
+
+warning[possibly-missing-submodule]: Submodule `sqltypes` might not have been imported
+  --> apps\api_rcon\src\connections\databases\migrations\versions\8711d6c5c582_initial_aware.py:31:27
+   |
+31 |     sa.Column('steam_id', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
+   |                           ^^^^^^^^^^^^^^^^^^^^^
+help: Consider explicitly importing `sqlmodel.sql.sqltypes`
+
+warning[possibly-missing-submodule]: Submodule `sqltypes` might not have been imported
+  --> apps\api_rcon\src\connections\databases\migrations\versions\8711d6c5c582_initial_aware.py:32:29
+   |
+32 |     sa.Column('discord_id', sqlmodel.sql.sqltypes.AutoString(), nullable=True),
+   |                             ^^^^^^^^^^^^^^^^^^^^^
+help: Consider explicitly importing `sqlmodel.sql.sqltypes`
+
+warning[possibly-missing-submodule]: Submodule `sqltypes` might not have been imported
+  --> apps\api_rcon\src\connections\databases\migrations\versions\8711d6c5c582_initial_aware.py:33:41
+   |
+33 |     sa.Column('custom_welcome_message', sqlmodel.sql.sqltypes.AutoString(), nullable=True),
+   |                                         ^^^^^^^^^^^^^^^^^^^^^
+help: Consider explicitly importing `sqlmodel.sql.sqltypes`
+
+warning[possibly-missing-submodule]: Submodule `sqltypes` might not have been imported
+  --> apps\api_rcon\src\connections\databases\migrations\versions\8711d6c5c582_initial_aware.py:39:23
+   |
+39 |     sa.Column('name', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
+   |                       ^^^^^^^^^^^^^^^^^^^^^
+help: Consider explicitly importing `sqlmodel.sql.sqltypes`
+
+warning[possibly-missing-submodule]: Submodule `sqltypes` might not have been imported
+  --> apps\api_rcon\src\connections\databases\migrations\versions\8711d6c5c582_initial_aware.py:45:23
+   |
+45 |     sa.Column('name', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
+   |                       ^^^^^^^^^^^^^^^^^^^^^
+help: Consider explicitly importing `sqlmodel.sql.sqltypes`
+
+warning[possibly-missing-submodule]: Submodule `sqltypes` might not have been imported
+  --> apps\api_rcon\src\connections\databases\migrations\versions\8711d6c5c582_initial_aware.py:46:23
+   |
+46 |     sa.Column('code', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
+   |                       ^^^^^^^^^^^^^^^^^^^^^
+help: Consider explicitly importing `sqlmodel.sql.sqltypes`
+
+warning[possibly-missing-submodule]: Submodule `sqltypes` might not have been imported
+  --> apps\api_rcon\src\connections\databases\migrations\versions\8711d6c5c582_initial_aware.py:53:27
+   |
+53 |     sa.Column('steam_id', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
+   |                           ^^^^^^^^^^^^^^^^^^^^^
+help: Consider explicitly importing `sqlmodel.sql.sqltypes`
+
+warning[possibly-missing-submodule]: Submodule `sqltypes` might not have been imported
+  --> apps\api_rcon\src\connections\databases\migrations\versions\8711d6c5c582_initial_aware.py:54:25
+   |
+54 |     sa.Column('reason', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
+   |                         ^^^^^^^^^^^^^^^^^^^^^
+help: Consider explicitly importing `sqlmodel.sql.sqltypes`
+
+warning[possibly-missing-submodule]: Submodule `sqltypes` might not have been imported
+  --> apps\api_rcon\src\connections\databases\migrations\versions\8711d6c5c582_initial_aware.py:61:21
+   |
+61 |     sa.Column('id', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
+   |                     ^^^^^^^^^^^^^^^^^^^^^
+help: Consider explicitly importing `sqlmodel.sql.sqltypes`
+
+warning[possibly-missing-submodule]: Submodule `sqltypes` might not have been imported
+  --> apps\api_rcon\src\connections\databases\migrations\versions\8711d6c5c582_initial_aware.py:62:27
+   |
+62 |     sa.Column('map_name', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
+   |                           ^^^^^^^^^^^^^^^^^^^^^
+help: Consider explicitly importing `sqlmodel.sql.sqltypes`
+
+warning[possibly-missing-submodule]: Submodule `sqltypes` might not have been imported
+  --> apps\api_rcon\src\connections\databases\migrations\versions\8711d6c5c582_initial_aware.py:71:27
+   |
+71 |     sa.Column('steam_id', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
+   |                           ^^^^^^^^^^^^^^^^^^^^^
+help: Consider explicitly importing `sqlmodel.sql.sqltypes`
+
+warning[possibly-missing-submodule]: Submodule `sqltypes` might not have been imported
+  --> apps\api_rcon\src\connections\databases\migrations\versions\8711d6c5c582_initial_aware.py:72:23
+   |
+72 |     sa.Column('type', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
+   |                       ^^^^^^^^^^^^^^^^^^^^^
+help: Consider explicitly importing `sqlmodel.sql.sqltypes`
+
+warning[possibly-missing-submodule]: Submodule `sqltypes` might not have been imported
+  --> apps\api_rcon\src\connections\databases\migrations\versions\8711d6c5c582_initial_aware.py:84:27
+   |
+84 |     sa.Column('steam_id', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
+   |                           ^^^^^^^^^^^^^^^^^^^^^
+help: Consider explicitly importing `sqlmodel.sql.sqltypes`
+
+warning[possibly-missing-submodule]: Submodule `sqltypes` might not have been imported
+  --> apps\api_rcon\src\connections\databases\migrations\versions\8711d6c5c582_initial_aware.py:91:27
+   |
+91 |     sa.Column('steam_id', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
+   |                           ^^^^^^^^^^^^^^^^^^^^^
+help: Consider explicitly importing `sqlmodel.sql.sqltypes`
+
+warning[possibly-missing-submodule]: Submodule `sqltypes` might not have been imported
+  --> apps\api_rcon\src\connections\databases\migrations\versions\8711d6c5c582_initial_aware.py:92:27
+   |
+92 |     sa.Column('match_id', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
+   |                           ^^^^^^^^^^^^^^^^^^^^^
+help: Consider explicitly importing `sqlmodel.sql.sqltypes`
+
+warning[possibly-missing-submodule]: Submodule `sqltypes` might not have been imported
+   --> apps\api_rcon\src\connections\databases\migrations\versions\8711d6c5c582_initial_aware.py:103:27
+    |
+103 |     sa.Column('match_id', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
+    |                           ^^^^^^^^^^^^^^^^^^^^^
+help: Consider explicitly importing `sqlmodel.sql.sqltypes`
+
+warning[possibly-missing-submodule]: Submodule `sqltypes` might not have been imported
+  --> apps\api_rcon\src\connections\databases\migrations\versions\8f56df8b4ac3_add_squad_id.py:28:63
+   |
+28 |     op.add_column('match_player_stats', sa.Column('squad_id', sqlmodel.sql.sqltypes.AutoString(), nullable=True))
+   |                                                               ^^^^^^^^^^^^^^^^^^^^^
+help: Consider explicitly importing `sqlmodel.sql.sqltypes`
+
+error[invalid-argument-type]: Argument to function `drop_constraint` is incorrect
+  --> apps\api_rcon\src\connections\databases\migrations\versions\8f56df8b4ac3_add_squad_id.py:63:24
+   |
+63 |     op.drop_constraint(None, 'reward_claims', type_='foreignkey')
+   |                        ^^^^ Expected `str`, found `None`
+info: Function defined here
+    --> .venv\Lib\site-packages\alembic\op.pyi:1014:5
+     |
+1014 | def drop_constraint(
+     |     ^^^^^^^^^^^^^^^
+1015 |     constraint_name: str,
+     |     -------------------- Parameter declared here
+
+error[invalid-argument-type]: Argument to function `drop_constraint` is incorrect
+  --> apps\api_rcon\src\connections\databases\migrations\versions\8f56df8b4ac3_add_squad_id.py:67:24
+   |
+67 |     op.drop_constraint(None, 'reward_claims', type_='foreignkey')
+   |                        ^^^^ Expected `str`, found `None`
+info: Function defined here
+    --> .venv\Lib\site-packages\alembic\op.pyi:1014:5
+     |
+1014 | def drop_constraint(
+     |     ^^^^^^^^^^^^^^^
+1015 |     constraint_name: str,
+     |     -------------------- Parameter declared here
+
+error[invalid-argument-type]: Argument to function `drop_constraint` is incorrect
+  --> apps\api_rcon\src\connections\databases\migrations\versions\8f56df8b4ac3_add_squad_id.py:77:24
+   |
+77 |     op.drop_constraint(None, 'memberships', type_='foreignkey')
+   |                        ^^^^ Expected `str`, found `None`
+info: Function defined here
+    --> .venv\Lib\site-packages\alembic\op.pyi:1014:5
+     |
+1014 | def drop_constraint(
+     |     ^^^^^^^^^^^^^^^
+1015 |     constraint_name: str,
+     |     -------------------- Parameter declared here
+
+error[invalid-argument-type]: Argument to function `drop_constraint` is incorrect
+  --> apps\api_rcon\src\connections\databases\migrations\versions\8f56df8b4ac3_add_squad_id.py:90:24
+   |
+90 |     op.drop_constraint(None, 'membership_types', type_='foreignkey')
+   |                        ^^^^ Expected `str`, found `None`
+info: Function defined here
+    --> .venv\Lib\site-packages\alembic\op.pyi:1014:5
+     |
+1014 | def drop_constraint(
+     |     ^^^^^^^^^^^^^^^
+1015 |     constraint_name: str,
+     |     -------------------- Parameter declared here
+
+error[invalid-argument-type]: Argument to function `drop_constraint` is incorrect
+  --> apps\api_rcon\src\connections\databases\migrations\versions\8f56df8b4ac3_add_squad_id.py:99:24
+   |
+99 |     op.drop_constraint(None, 'match_player_stats', type_='foreignkey')
+   |                        ^^^^ Expected `str`, found `None`
+info: Function defined here
+    --> .venv\Lib\site-packages\alembic\op.pyi:1014:5
+     |
+1014 | def drop_constraint(
+     |     ^^^^^^^^^^^^^^^
+1015 |     constraint_name: str,
+     |     -------------------- Parameter declared here
+
+error[invalid-argument-type]: Argument to bound method `DMLWhereBase.where` is incorrect
+  --> apps\api_rcon\src\main.py:68:25
+   |
+68 |                         SteamLinkRedemption.expires_at < int(time.time())
+   |                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ Expected `SQLCoreOperations[bool] | _HasClauseElement[bool] | TypedColumnsClauseRole[bool] | (() -> ColumnElement[bool]) | LambdaElement`, found `bool`
+info: type `bool` is not assignable to any element of the union `SQLCoreOperations[bool] | _HasClauseElement[bool] | TypedColumnsClauseRole[bool] | (() -> ColumnElement[bool]) | LambdaElement`
+info: Ôö£ÔöÇÔöÇ type `bool` is not assignable to protocol `_HasClauseElement[bool]`
+info: Ôöé   ÔööÔöÇÔöÇ protocol member `__clause_element__` is not defined on type `bool`
+info: ÔööÔöÇÔöÇ ... omitted 4 union elements without additional context
+info: Method defined here
+    --> .venv\Lib\site-packages\sqlalchemy\sql\dml.py:1462:9
+     |
+1462 |     def where(self, *whereclause: _ColumnExpressionArgument[bool]) -> Self:
+     |         ^^^^^       --------------------------------------------- Parameter declared here
+
+error[unresolved-attribute]: Object of type `str | None` has no attribute `is_not`
+   --> apps\api_rcon\src\modules\v1\services\discord_oauth_service.py:194:21
+    |
+194 |                     Role.discord_role_id.is_not(None),
+    |                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[invalid-argument-type]: Argument to bound method `GenerativeSelect.order_by` is incorrect
+   --> apps\api_rcon\src\modules\v1\services\memberships_service.py:590:63
+    |
+590 |         all_roles = (await session.exec(select(Role).order_by(Role.id))).all()
+    |                                                               ^^^^^^^ Expected `None | _NoArg | str | ... omitted 5 union elements`, found `int | None`
+info: element `int` of union `int | None` is not assignable to `None | _NoArg | str | ... omitted 5 union elements`
+info: ÔööÔöÇÔöÇ type `int` is not assignable to any element of the union `None | _NoArg | str | ... omitted 5 union elements`
+info:     Ôö£ÔöÇÔöÇ type `int` is not assignable to protocol `_HasClauseElement[Any]`
+info:     Ôöé   ÔööÔöÇÔöÇ protocol member `__clause_element__` is not defined on type `int`
+info:     ÔööÔöÇÔöÇ ... omitted 7 union elements without additional context
+info: Method defined here
+    --> .venv\Lib\site-packages\sqlalchemy\sql\selectable.py:4386:9
+     |
+4386 |       def order_by(
+     |           ^^^^^^^^
+4387 |           self,
+4388 | /         __first: Union[
+4389 | |             Literal[None, _NoArg.NO_ARG],
+4390 | |             _ColumnExpressionOrStrLabelArgument[Any],
+4391 | |         ] = _NoArg.NO_ARG,
+     | |_________________________- Parameter declared here
+
+error[invalid-argument-type]: Argument to bound method `GenerativeSelect.order_by` is incorrect
+   --> apps\api_rcon\src\modules\v1\services\memberships_service.py:601:73
+    |
+601 |         all_types = (await session.exec(select(MembershipType).order_by(MembershipType.id))).all()
+    |                                                                         ^^^^^^^^^^^^^^^^^ Expected `None | _NoArg | str | ... omitted 5 union elements`, found `int | None`
+info: element `int` of union `int | None` is not assignable to `None | _NoArg | str | ... omitted 5 union elements`
+info: ÔööÔöÇÔöÇ type `int` is not assignable to any element of the union `None | _NoArg | str | ... omitted 5 union elements`
+info:     Ôö£ÔöÇÔöÇ type `int` is not assignable to protocol `_HasClauseElement[Any]`
+info:     Ôöé   ÔööÔöÇÔöÇ protocol member `__clause_element__` is not defined on type `int`
+info:     ÔööÔöÇÔöÇ ... omitted 7 union elements without additional context
+info: Method defined here
+    --> .venv\Lib\site-packages\sqlalchemy\sql\selectable.py:4386:9
+     |
+4386 |       def order_by(
+     |           ^^^^^^^^
+4387 |           self,
+4388 | /         __first: Union[
+4389 | |             Literal[None, _NoArg.NO_ARG],
+4390 | |             _ColumnExpressionOrStrLabelArgument[Any],
+4391 | |         ] = _NoArg.NO_ARG,
+     | |_________________________- Parameter declared here
+
+error[invalid-argument-type]: Argument to bound method `DMLWhereBase.where` is incorrect
+  --> apps\api_rcon\src\modules\v1\services\players_service.py:49:25
+   |
+49 |                         Player.steam_id == req.steam_id, Player.discord_id.is_(None)
+   |                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ Expected `SQLCoreOperations[bool] | _HasClauseElement[bool] | TypedColumnsClauseRole[bool] | (() -> ColumnElement[bool]) | LambdaElement`, found `bool`
+info: type `bool` is not assignable to any element of the union `SQLCoreOperations[bool] | _HasClauseElement[bool] | TypedColumnsClauseRole[bool] | (() -> ColumnElement[bool]) | LambdaElement`
+info: Ôö£ÔöÇÔöÇ type `bool` is not assignable to protocol `_HasClauseElement[bool]`
+info: Ôöé   ÔööÔöÇÔöÇ protocol member `__clause_element__` is not defined on type `bool`
+info: ÔööÔöÇÔöÇ ... omitted 4 union elements without additional context
+info: Method defined here
+    --> .venv\Lib\site-packages\sqlalchemy\sql\dml.py:1462:9
+     |
+1462 |     def where(self, *whereclause: _ColumnExpressionArgument[bool]) -> Self:
+     |         ^^^^^       --------------------------------------------- Parameter declared here
+
+error[unresolved-attribute]: Object of type `str | None` has no attribute `is_`
+  --> apps\api_rcon\src\modules\v1\services\players_service.py:49:58
+   |
+49 |                         Player.steam_id == req.steam_id, Player.discord_id.is_(None)
+   |                                                          ^^^^^^^^^^^^^^^^^^^^^
+
+error[invalid-argument-type]: Argument to bound method `DMLWhereBase.where` is incorrect
+   --> apps\api_rcon\src\modules\v1\services\rcon_servers_service.py:191:38
+    |
+191 |             update(Membership).where(Membership.server_id == server_id).values(server_id=None)
+    |                                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ Expected `SQLCoreOperations[bool] | _HasClauseElement[bool] | TypedColumnsClauseRole[bool] | (() -> ColumnElement[bool]) | LambdaElement`, found `bool`
+info: type `bool` is not assignable to any element of the union `SQLCoreOperations[bool] | _HasClauseElement[bool] | TypedColumnsClauseRole[bool] | (() -> ColumnElement[bool]) | LambdaElement`
+info: Ôö£ÔöÇÔöÇ type `bool` is not assignable to protocol `_HasClauseElement[bool]`
+info: Ôöé   ÔööÔöÇÔöÇ protocol member `__clause_element__` is not defined on type `bool`
+info: ÔööÔöÇÔöÇ ... omitted 4 union elements without additional context
+info: Method defined here
+    --> .venv\Lib\site-packages\sqlalchemy\sql\dml.py:1462:9
+     |
+1462 |     def where(self, *whereclause: _ColumnExpressionArgument[bool]) -> Self:
+     |         ^^^^^       --------------------------------------------- Parameter declared here
+
+error[invalid-argument-type]: Argument to bound method `DMLWhereBase.where` is incorrect
+   --> apps\api_rcon\src\modules\v1\services\rcon_servers_service.py:194:42
+    |
+194 |             update(MembershipType).where(MembershipType.server_id == server_id).values(server_id=None)
+    |                                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ Expected `SQLCoreOperations[bool] | _HasClauseElement[bool] | TypedColumnsClauseRole[bool] | (() -> ColumnElement[bool]) | LambdaElement`, found `bool`
+info: type `bool` is not assignable to any element of the union `SQLCoreOperations[bool] | _HasClauseElement[bool] | TypedColumnsClauseRole[bool] | (() -> ColumnElement[bool]) | LambdaElement`
+info: Ôö£ÔöÇÔöÇ type `bool` is not assignable to protocol `_HasClauseElement[bool]`
+info: Ôöé   ÔööÔöÇÔöÇ protocol member `__clause_element__` is not defined on type `bool`
+info: ÔööÔöÇÔöÇ ... omitted 4 union elements without additional context
+info: Method defined here
+    --> .venv\Lib\site-packages\sqlalchemy\sql\dml.py:1462:9
+     |
+1462 |     def where(self, *whereclause: _ColumnExpressionArgument[bool]) -> Self:
+     |         ^^^^^       --------------------------------------------- Parameter declared here
+
+error[unresolved-reference]: Name `Ban` used when not defined
+   --> apps\api_rcon\src\modules\v1\services\rcon_servers_service.py:246:27
+    |
+246 |         ban_stmt = select(Ban.steam_id).where(Ban.is_active == True).distinct()
+    |                           ^^^
+
+error[unresolved-reference]: Name `Ban` used when not defined
+   --> apps\api_rcon\src\modules\v1\services\rcon_servers_service.py:246:47
+    |
+246 |         ban_stmt = select(Ban.steam_id).where(Ban.is_active == True).distinct()
+    |                                               ^^^
+
+error[invalid-argument-type]: Argument to bound method `GenerativeSelect.order_by` is incorrect
+  --> apps\api_rcon\src\modules\v1\services\roles_service.py:49:59
+   |
+49 |         roles = (await session.exec(select(Role).order_by(Role.id))).all()
+   |                                                           ^^^^^^^ Expected `None | _NoArg | str | ... omitted 5 union elements`, found `int | None`
+info: element `int` of union `int | None` is not assignable to `None | _NoArg | str | ... omitted 5 union elements`
+info: ÔööÔöÇÔöÇ type `int` is not assignable to any element of the union `None | _NoArg | str | ... omitted 5 union elements`
+info:     Ôö£ÔöÇÔöÇ type `int` is not assignable to protocol `_HasClauseElement[Any]`
+info:     Ôöé   ÔööÔöÇÔöÇ protocol member `__clause_element__` is not defined on type `int`
+info:     ÔööÔöÇÔöÇ ... omitted 7 union elements without additional context
+info: Method defined here
+    --> .venv\Lib\site-packages\sqlalchemy\sql\selectable.py:4386:9
+     |
+4386 |       def order_by(
+     |           ^^^^^^^^
+4387 |           self,
+4388 | /         __first: Union[
+4389 | |             Literal[None, _NoArg.NO_ARG],
+4390 | |             _ColumnExpressionOrStrLabelArgument[Any],
+4391 | |         ] = _NoArg.NO_ARG,
+     | |_________________________- Parameter declared here
+
+error[invalid-return-type]: Return type does not match returned value
+  --> apps\api_rcon\src\modules\v1\services\squads_service.py:76:16
+   |
+76 |         return squads
+   |                ^^^^^^ expected `list[Squad]`, found `Sequence[Squad]`
+   |
+  ::: apps\api_rcon\src\modules\v1\services\squads_service.py:69:74
+   |
+69 |     async def get_player_squads(steam_id: str, session: AsyncSession) -> List[Squad]:
+   |                                                                          ----------- Expected `list[Squad]` because of return type
+
+error[invalid-return-type]: Return type does not match returned value
+  --> apps\api_rcon\src\modules\v1\services\squads_service.py:87:16
+   |
+87 |         return players
+   |                ^^^^^^^ expected `list[Player]`, found `Sequence[Player]`
+   |
+  ::: apps\api_rcon\src\modules\v1\services\squads_service.py:79:74
+   |
+79 |     async def get_squad_members(squad_id: str, session: AsyncSession) -> List[Player]:
+   |                                                                          ------------ Expected `list[Player]` because of return type
+
+error[invalid-return-type]: Return type does not match returned value
+   --> apps\api_rcon\src\modules\v1\services\squads_service.py:142:16
+    |
+142 |           return (await session.exec(
+    |  ________________^
+143 | |             select(Squad).order_by(order_col).limit(limit)
+144 | |         )).all()
+    | |________________^ expected `list[Squad]`, found `Sequence[Squad]`
+    |
+   ::: apps\api_rcon\src\modules\v1\services\squads_service.py:133:88
+    |
+133 |       async def get_leaderboard(sort_by: str, session: AsyncSession, limit: int = 10) -> List[Squad]:
+    |                                                                                          ----------- Expected `list[Squad]` because of return type
+
+error[unresolved-attribute]: Object of type `tuple[str, int, int, int]` has no attribute `steam_id`
+   --> apps\api_rcon\src\modules\v1\services\squads_service.py:168:22
+    |
+168 |         stats_map = {row.steam_id: row for row in stats_rows}
+    |                      ^^^^^^^^^^^^
+
+error[unresolved-attribute]: Object of type `tuple[str, int, int, int]` has no attribute `steam_id`
+   --> apps\api_rcon\src\modules\v1\services\squads_service.py:184:16
+    |
+184 |             if row.steam_id not in current_member_ids:
+    |                ^^^^^^^^^^^^
+
+error[unresolved-attribute]: Object of type `tuple[str, int, int, int]` has no attribute `steam_id`
+   --> apps\api_rcon\src\modules\v1\services\squads_service.py:186:55
+    |
+186 |                 ex_player = await session.get(Player, row.steam_id)
+    |                                                       ^^^^^^^^^^^^
+
+error[unresolved-attribute]: Object of type `tuple[str, int, int, int]` has no attribute `steam_id`
+   --> apps\api_rcon\src\modules\v1\services\squads_service.py:189:33
+    |
+189 |                     "steam_id": row.steam_id,
+    |                                 ^^^^^^^^^^^^
+
+error[unresolved-attribute]: Object of type `tuple[str, int, int, int]` has no attribute `total_kills`
+   --> apps\api_rcon\src\modules\v1\services\squads_service.py:191:30
+    |
+191 |                     "kills": row.total_kills or 0,
+    |                              ^^^^^^^^^^^^^^^
+
+error[unresolved-attribute]: Object of type `tuple[str, int, int, int]` has no attribute `total_deaths`
+   --> apps\api_rcon\src\modules\v1\services\squads_service.py:192:31
+    |
+192 |                     "deaths": row.total_deaths or 0,
+    |                               ^^^^^^^^^^^^^^^^
+
+error[unresolved-attribute]: Object of type `tuple[str, int, int, int]` has no attribute `total_cash_earned`
+   --> apps\api_rcon\src\modules\v1\services\squads_service.py:193:29
+    |
+193 |                     "cash": row.total_cash_earned or 0
+    |                             ^^^^^^^^^^^^^^^^^^^^^
+
+error[no-matching-overload]: No overload of bound method `list.sort` matches arguments
+   --> apps\api_rcon\src\modules\v1\services\squads_service.py:197:13
+    |
+197 |             results.sort(key=lambda x: x["deaths"], reverse=True)
+    |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+info: First overload defined here
+    --> stdlib\builtins.pyi:3017:5
+     |
+3017 | /     @overload
+3018 | |     def sort(self: list[SupportsRichComparisonT], *, key: None = None, reverse: bool = False) -> None:
+3019 | |         """Sort the list in ascending order and return None.
+3020 | |
+3021 | |         The sort is in-place (i.e. the list itself is modified) and stable
+3022 | |         (i.e. the order of two equal elements is maintained).
+3023 | |
+3024 | |         If a key function is given, apply it once to each list item and sort
+3025 | |         them, ascending or descending, according to their function values.
+3026 | |
+3027 | |         The reverse flag can be set to sort in descending order.
+3028 | |         """
+     | |___________^ First overload defined here
+info: Possible overloads for bound method `sort`:
+info:   [SupportsRichComparisonT](self: list[SupportsRichComparisonT], *, key: None = None, reverse: bool = False) -> None
+info:   (self, *, key: (_T@list, /) -> SupportsDunderLT[Any] | SupportsDunderGT[Any], reverse: bool = False) -> None
+
+error[no-matching-overload]: No overload of bound method `list.sort` matches arguments
+   --> apps\api_rcon\src\modules\v1\services\squads_service.py:199:13
+    |
+199 |             results.sort(key=lambda x: x["cash"], reverse=True)
+    |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+info: First overload defined here
+    --> stdlib\builtins.pyi:3017:5
+     |
+3017 | /     @overload
+3018 | |     def sort(self: list[SupportsRichComparisonT], *, key: None = None, reverse: bool = False) -> None:
+3019 | |         """Sort the list in ascending order and return None.
+3020 | |
+3021 | |         The sort is in-place (i.e. the list itself is modified) and stable
+3022 | |         (i.e. the order of two equal elements is maintained).
+3023 | |
+3024 | |         If a key function is given, apply it once to each list item and sort
+3025 | |         them, ascending or descending, according to their function values.
+3026 | |
+3027 | |         The reverse flag can be set to sort in descending order.
+3028 | |         """
+     | |___________^ First overload defined here
+info: Possible overloads for bound method `sort`:
+info:   [SupportsRichComparisonT](self: list[SupportsRichComparisonT], *, key: None = None, reverse: bool = False) -> None
+info:   (self, *, key: (_T@list, /) -> SupportsDunderLT[Any] | SupportsDunderGT[Any], reverse: bool = False) -> None
+
+error[no-matching-overload]: No overload of bound method `list.sort` matches arguments
+   --> apps\api_rcon\src\modules\v1\services\squads_service.py:201:13
+    |
+201 |             results.sort(key=lambda x: x["kills"], reverse=True)
+    |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+info: First overload defined here
+    --> stdlib\builtins.pyi:3017:5
+     |
+3017 | /     @overload
+3018 | |     def sort(self: list[SupportsRichComparisonT], *, key: None = None, reverse: bool = False) -> None:
+3019 | |         """Sort the list in ascending order and return None.
+3020 | |
+3021 | |         The sort is in-place (i.e. the list itself is modified) and stable
+3022 | |         (i.e. the order of two equal elements is maintained).
+3023 | |
+3024 | |         If a key function is given, apply it once to each list item and sort
+3025 | |         them, ascending or descending, according to their function values.
+3026 | |
+3027 | |         The reverse flag can be set to sort in descending order.
+3028 | |         """
+     | |___________^ First overload defined here
+info: Possible overloads for bound method `sort`:
+info:   [SupportsRichComparisonT](self: list[SupportsRichComparisonT], *, key: None = None, reverse: bool = False) -> None
+info:   (self, *, key: (_T@list, /) -> SupportsDunderLT[Any] | SupportsDunderGT[Any], reverse: bool = False) -> None
+
+error[invalid-assignment]: Object of type `def fake_get_config() -> CoroutineType[Any, Any, Unknown]` is not assignable to attribute `get_config` of type `def get_config(self) -> CoroutineType[Any, Any, Config1]`
+  --> apps\api_rcon\tests\test_integration_infallibility.py:45:5
+   |
+45 |     rcon.get_config = fake_get_config
+   |     ^^^^^^^^^^^^^^^
+
+error[invalid-assignment]: Object of type `def fake_update_config(revision: str, new_text: str) -> CoroutineType[Any, Any, Unknown]` is not assignable to attribute `update_config` of type `def update_config(self, revision: str, new_text: str) -> CoroutineType[Any, Any, ConfigResult]`
+  --> apps\api_rcon\tests\test_integration_infallibility.py:46:5
+   |
+46 |     rcon.update_config = fake_update_config
+   |     ^^^^^^^^^^^^^^^^^^
+
+error[unresolved-attribute]: Object of type `str | None` has no attribute `is_not`
+  --> apps\api_rcon\tests\test_link_concurrency.py:47:63
+   |
+47 |             linked = (await session.exec(select(Player).where(Player.discord_id.is_not(None)))).all()
+   |                                                               ^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[invalid-argument-type]: Argument to function `RconServersService.delete_server` is incorrect
+   --> apps\api_rcon\tests\test_multi_rcon_api.py:129:50
+    |
+129 |     res = await RconServersService.delete_server(s1.id, session)
+    |                                                  ^^^^^ Expected `int`, found `int | None`
+info: element `None` of union `int | None` is not assignable to `int`
+info: Function defined here
+   --> apps\api_rcon\src\modules\v1\services\rcon_servers_service.py:182:15
+    |
+182 |     async def delete_server(server_id: int, session: AsyncSession) -> Dict[str, Any]:
+    |               ^^^^^^^^^^^^^ -------------- Parameter declared here
+
+error[unresolved-attribute]: Attribute `tzinfo` is not defined on `None` in union `datetime | None`
+   --> apps\api_rcon\tests\test_role_lifecycle_and_pricing.py:381:8
+    |
+381 |     if m_end.tzinfo is None:
+    |        ^^^^^^^^^^^^
+
+error[unresolved-attribute]: Attribute `replace` is not defined on `None` in union `datetime | None`
+   --> apps\api_rcon\tests\test_role_lifecycle_and_pricing.py:382:17
+    |
+382 |         m_end = m_end.replace(tzinfo=timezone.utc)
+    |                 ^^^^^^^^^^^^^
+
+error[unsupported-operator]: Unsupported `>` operation
+   --> apps\api_rcon\tests\test_role_lifecycle_and_pricing.py:383:12
+    |
+383 |     assert m_end > now + timedelta(days=14)
+    |            -----^^^------------------------
+    |            |       |
+    |            |       Has type `datetime`
+    |            Has type `datetime | None`
+info: Operation fails because operator `>` is not supported between objects of type `None` and `datetime`
+
+error[no-matching-overload]: No overload of function `fixture` matches arguments
+  --> apps\api_rcon\tests\test_roles_domain.py:23:1
+   |
+23 | @pytest_asyncio.fixture
+   | ^^^^^^^^^^^^^^^^^^^^^^^
+info: First overload defined here
+   --> .venv\Lib\site-packages\pytest_asyncio\plugin.py:150:1
+    |
+150 | / @overload
+151 | | def fixture(
+152 | |     fixture_function: FixtureFunction[_P, _R],
+153 | |     *,
+154 | |     scope: _ScopeName | Callable[[str, Config], _ScopeName] = ...,
+155 | |     loop_scope: _ScopeName | None = ...,
+156 | |     params: Iterable[object] | None = ...,
+157 | |     autouse: bool = ...,
+158 | |     ids: (
+159 | |         Iterable[str | float | int | bool | None]
+160 | |         | Callable[[Any], object | None]
+161 | |         | None
+162 | |     ) = ...,
+163 | |     name: str | None = ...,
+164 | | ) -> FixtureFunction[_P, _R]: ...
+    | |_________________________________^ First overload defined here
+info: Possible overloads for function `fixture`:
+info:   [**_P, _R](fixture_function: (**_P) -> _R, *, scope: Literal["session", "package", "module", "class", "function"] | ((str, Config, /) -> Literal["session", "package", "module", "class", "function"]) = ..., loop_scope: Literal["session", "package", "module", "class", "function"] | None = ..., params: Iterable[object] | None = ..., autouse: bool = ..., ids: Iterable[str | float | None] | ((Any, /) -> object) | None = ..., name: str | None = ...) -> ((**_P) -> _R)
+info:   (fixture_function: None = ..., *, scope: Literal["session", "package", "module", "class", "function"] | ((str, Config, /) -> Literal["session", "package", "module", "class", "function"]) = ..., loop_scope: Literal["session", "package", "module", "class", "function"] | None = ..., params: Iterable[object] | None = ..., autouse: bool = ..., ids: Iterable[str | float | None] | ((Any, /) -> object) | None = ..., name: str | None = None) -> ([**_P'return, _R'return]((**_P'return) -> _R'return, /) -> ((**_P'return) -> _R'return))
+info: Overload implementation defined here
+   --> .venv\Lib\site-packages\pytest_asyncio\plugin.py:184:5
+    |
+184 |   def fixture(
+    |  _____^
+185 | |     fixture_function: FixtureFunction[_P, _R] | None = None,
+186 | |     loop_scope: _ScopeName | None = None,
+187 | |     **kwargs: Any,
+188 | | ) -> (
+189 | |     FixtureFunction[_P, _R]
+190 | |     | Callable[[FixtureFunction[_P, _R]], FixtureFunction[_P, _R]]
+    | |__________________________________________________________________^
+
+error[invalid-return-type]: Return type does not match returned value
+  --> apps\api_rcon\tests\test_roles_domain.py:24:24
+   |
+24 | async def session() -> AsyncSession:
+   |                        ^^^^^^^^^^^^ expected `AsyncSession`, found `types.AsyncGeneratorType`
+info: Function is inferred as returning `types.AsyncGeneratorType` because it is an async generator function
+info: See https://docs.python.org/3/glossary.html#term-asynchronous-generator for more details
+
+error[not-subscriptable]: Cannot subscript object of type `None` with no `__getitem__` method
+  --> apps\api_rcon\tests\test_steam_auth.py:37:16
+   |
+37 |         assert verify_signed_payload_token(token)["result"] == "success"
+   |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[not-subscriptable]: Cannot subscript object of type `PlayerResponse` with no `__getitem__` method
+   --> apps\discord_bot\src\plugins\account.py:304:28
+    |
+304 |             target_steam = user_data["steam_id"]
+    |                            ^^^^^^^^^^^^^^^^^^^^^
+
+error[unresolved-attribute]: Object of type `PlayerResponse & ~AlwaysFalsy` has no attribute `get`
+   --> apps\discord_bot\src\plugins\account.py:307:23
+    |
+307 |         active_role = steam_data.get("active_role") if steam_data else None
+    |                       ^^^^^^^^^^^^^^
+
+error[not-subscriptable]: Cannot subscript object of type `PlayerResponse` with no `__getitem__` method
+   --> apps\discord_bot\src\plugins\admin.py:388:35
+    |
+388 |             target_steam_id = str(db_player["steam_id"])
+    |                                   ^^^^^^^^^^^^^^^^^^^^^
+
+error[not-subscriptable]: Cannot subscript object of type `PlayerResponse` with no `__getitem__` method
+   --> apps\discord_bot\src\plugins\admin.py:393:37
+    |
+393 |             target_discord_id = int(db_player["discord_id"])
+    |                                     ^^^^^^^^^^^^^^^^^^^^^^^
+
+error[invalid-assignment]: Object of type `list[MembershipTypeItem]` is not assignable to `list[dict[Unknown, Unknown]]`
+  --> apps\discord_bot\src\plugins\memberships.py:30:37
+   |
+30 |                     _cached_types = await plugin.model.api.get_membership_types(active_only=True)
+   |                                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ Incompatible value of type `list[MembershipTypeItem]`
+   |
+  ::: apps\discord_bot\src\plugins\memberships.py:17:16
+   |
+17 | _cached_types: list[dict] = []
+   |                ---------- Declared type
+
+error[invalid-argument-type]: Argument to function `execute_membership_sync` is incorrect
+   --> apps\discord_bot\src\plugins\memberships.py:442:57
+    |
+442 |             asyncio.create_task(execute_membership_sync(ctx.app, plugin.model, target_guild_id=ctx.guild_id))
+    |                                                         ^^^^^^^ Expected `GatewayBot`, found `GatewayTraits | RESTTraits`
+info: element `GatewayTraits` of union `GatewayTraits | RESTTraits` is not assignable to `GatewayBot`
+info: Function defined here
+   --> apps\discord_bot\src\plugins\tasks.py:294:11
+    |
+294 | async def execute_membership_sync(
+    |           ^^^^^^^^^^^^^^^^^^^^^^^
+295 |     app: hikari.GatewayBot,
+    |     ---------------------- Parameter declared here
+
+error[invalid-argument-type]: Argument to function `execute_membership_sync` is incorrect
+   --> apps\discord_bot\src\plugins\memberships.py:460:57
+    |
+460 |             asyncio.create_task(execute_membership_sync(ctx.app, plugin.model, target_guild_id=ctx.guild_id))
+    |                                                         ^^^^^^^ Expected `GatewayBot`, found `GatewayTraits | RESTTraits`
+info: element `GatewayTraits` of union `GatewayTraits | RESTTraits` is not assignable to `GatewayBot`
+info: Function defined here
+   --> apps\discord_bot\src\plugins\tasks.py:294:11
+    |
+294 | async def execute_membership_sync(
+    |           ^^^^^^^^^^^^^^^^^^^^^^^
+295 |     app: hikari.GatewayBot,
+    |     ---------------------- Parameter declared here
+
+error[invalid-argument-type]: Argument to function `execute_membership_sync` is incorrect
+   --> apps\discord_bot\src\plugins\memberships.py:606:57
+    |
+606 |             asyncio.create_task(execute_membership_sync(ctx.app, plugin.model, target_guild_id=ctx.guild_id))
+    |                                                         ^^^^^^^ Expected `GatewayBot`, found `GatewayTraits | RESTTraits`
+info: element `GatewayTraits` of union `GatewayTraits | RESTTraits` is not assignable to `GatewayBot`
+info: Function defined here
+   --> apps\discord_bot\src\plugins\tasks.py:294:11
+    |
+294 | async def execute_membership_sync(
+    |           ^^^^^^^^^^^^^^^^^^^^^^^
+295 |     app: hikari.GatewayBot,
+    |     ---------------------- Parameter declared here
+
+error[unresolved-attribute]: Object of type `MembershipTypeItem` has no attribute `get`
+   --> apps\discord_bot\src\plugins\memberships.py:668:42
+    |
+668 |                 embed.add_field(name=f"#{t.get('id')} - {name} (`{code}`)", value=field_value, inline=True)
+    |                                          ^^^^^
+
+error[unresolved-attribute]: Attribute `id` is not defined on `None` in union `RconServerItem | None`
+  --> apps\discord_bot\src\plugins\rcon.py:79:50
+   |
+79 |             embed.add_field(name="ID", value=f"`{server.id}`", inline=True)
+   |                                                  ^^^^^^^^^
+
+error[unresolved-attribute]: Attribute `name` is not defined on `None` in union `RconServerItem | None`
+  --> apps\discord_bot\src\plugins\rcon.py:80:55
+   |
+80 |             embed.add_field(name="Nombre", value=f"**{server.name}**", inline=True)
+   |                                                       ^^^^^^^^^^^
+
+error[unresolved-attribute]: Attribute `scheme` is not defined on `None` in union `RconServerItem | None`
+  --> apps\discord_bot\src\plugins\rcon.py:81:57
+   |
+81 |             embed.add_field(name="Direcci├│n", value=f"`{server.scheme}://{server.ip}:{server.port}`", inline=False)
+   |                                                         ^^^^^^^^^^^^^
+
+error[unresolved-attribute]: Attribute `ip` is not defined on `None` in union `RconServerItem | None`
+  --> apps\discord_bot\src\plugins\rcon.py:81:75
+   |
+81 |             embed.add_field(name="Direcci├│n", value=f"`{server.scheme}://{server.ip}:{server.port}`", inline=False)
+   |                                                                           ^^^^^^^^^
+
+error[unresolved-attribute]: Attribute `port` is not defined on `None` in union `RconServerItem | None`
+  --> apps\discord_bot\src\plugins\rcon.py:81:87
+   |
+81 |             embed.add_field(name="Direcci├│n", value=f"`{server.scheme}://{server.ip}:{server.port}`", inline=False)
+   |                                                                                       ^^^^^^^^^^^
+
+error[unresolved-attribute]: Attribute `is_active` is not defined on `None` in union `RconServerItem | None`
+  --> apps\discord_bot\src\plugins\rcon.py:82:58
+   |
+82 |             embed.add_field(name="Activo", value="S├¡" if server.is_active else "No", inline=True)
+   |                                                          ^^^^^^^^^^^^^^^^
+
+error[unresolved-attribute]: Attribute `is_default` is not defined on `None` in union `RconServerItem | None`
+  --> apps\discord_bot\src\plugins\rcon.py:83:68
+   |
+83 |             embed.add_field(name="Predeterminado", value="S├¡ Ô¡É" if server.is_default else "No", inline=True)
+   |                                                                     ^^^^^^^^^^^^^^^^^
+
+error[unresolved-attribute]: Attribute `name` is not defined on `None` in union `RconServerItem | None`
+   --> apps\discord_bot\src\plugins\rcon.py:162:67
+    |
+162 |             await ctx.respond(f"Ô£à Servidor `{self.server_id}` (**{res.server.name}**) actualizado correctamente.")
+    |                                                                    ^^^^^^^^^^^^^^^
+
+error[unresolved-attribute]: Attribute `steam_id` is not defined on `None` in union `PlayerResponse | None`
+  --> apps\discord_bot\src\plugins\squads.py:38:20
+   |
+38 |         steam_id = player.steam_id
+   |                    ^^^^^^^^^^^^^^^
+
+error[unresolved-attribute]: Attribute `steam_id` is not defined on `None` in union `PlayerResponse | None`
+  --> apps\discord_bot\src\plugins\squads.py:55:16
+   |
+55 |         return player.steam_id
+   |                ^^^^^^^^^^^^^^^
+
+error[invalid-argument-type]: Argument to function `get_steam_id_from_member` is incorrect
+  --> apps\discord_bot\src\plugins\squads.py:69:51
+   |
+69 |         steam_id = await get_steam_id_from_member(ctx.member, ctx)
+   |                                                   ^^^^^^^^^^ Expected `Member`, found `Member | None`
+info: element `None` of union `Member | None` is not assignable to `Member`
+info: Function defined here
+  --> apps\discord_bot\src\plugins\squads.py:52:11
+   |
+52 | async def get_steam_id_from_member(member: hikari.Member, ctx: crescent.Context) -> str:
+   |           ^^^^^^^^^^^^^^^^^^^^^^^^ --------------------- Parameter declared here
+
+error[invalid-argument-type]: Argument to bound method `APIClient.get_squad_by_tag` is incorrect
+  --> apps\discord_bot\src\plugins\squads.py:98:65
+   |
+98 |                 squad = await plugin.model.api.get_squad_by_tag(self.unidad)
+   |                                                                 ^^^^^^^^^^^ Expected `str`, found `int & ~AlwaysFalsy`
+info: Method defined here
+   --> apps\discord_bot\src\api_client.py:438:15
+    |
+438 |     async def get_squad_by_tag(self, tag: str) -> schemas.SquadData:
+    |               ^^^^^^^^^^^^^^^^       -------- Parameter declared here
+
+error[invalid-argument-type]: Argument to function `get_steam_id_from_member` is incorrect
+   --> apps\discord_bot\src\plugins\squads.py:100:59
+    |
+100 |                 steam_id = await get_steam_id_from_member(ctx.member, ctx)
+    |                                                           ^^^^^^^^^^ Expected `Member`, found `Member | None`
+info: element `None` of union `Member | None` is not assignable to `Member`
+info: Function defined here
+  --> apps\discord_bot\src\plugins\squads.py:52:11
+   |
+52 | async def get_steam_id_from_member(member: hikari.Member, ctx: crescent.Context) -> str:
+   |           ^^^^^^^^^^^^^^^^^^^^^^^^ --------------------- Parameter declared here
+
+error[invalid-argument-type]: Argument to function `get_steam_id_from_member` is incorrect
+   --> apps\discord_bot\src\plugins\squads.py:123:51
+    |
+123 |         steam_id = await get_steam_id_from_member(ctx.member, ctx)
+    |                                                   ^^^^^^^^^^ Expected `Member`, found `Member | None`
+info: element `None` of union `Member | None` is not assignable to `Member`
+info: Function defined here
+  --> apps\discord_bot\src\plugins\squads.py:52:11
+   |
+52 | async def get_steam_id_from_member(member: hikari.Member, ctx: crescent.Context) -> str:
+   |           ^^^^^^^^^^^^^^^^^^^^^^^^ --------------------- Parameter declared here
+
+error[invalid-argument-type]: Argument to function `resolve_target_squad` is incorrect
+   --> apps\discord_bot\src\plugins\squads.py:128:63
+    |
+128 |             squad = await resolve_target_squad(ctx, steam_id, self.unidad)
+    |                                                               ^^^^^^^^^^^ Expected `str | None`, found `int | None`
+info: element `int` of union `int | None` is not assignable to `str | None`
+info: Function defined here
+  --> apps\discord_bot\src\plugins\squads.py:20:11
+   |
+20 | async def resolve_target_squad(ctx: crescent.Context, steam_id: str, unidad_tag: str | None = None) -> SquadData:
+   |           ^^^^^^^^^^^^^^^^^^^^                                       ----------------------------- Parameter declared here
+
+error[invalid-argument-type]: Argument to function `get_steam_id_from_member` is incorrect
+   --> apps\discord_bot\src\plugins\squads.py:159:51
+    |
+159 |         steam_id = await get_steam_id_from_member(ctx.member, ctx)
+    |                                                   ^^^^^^^^^^ Expected `Member`, found `Member | None`
+info: element `None` of union `Member | None` is not assignable to `Member`
+info: Function defined here
+  --> apps\discord_bot\src\plugins\squads.py:52:11
+   |
+52 | async def get_steam_id_from_member(member: hikari.Member, ctx: crescent.Context) -> str:
+   |           ^^^^^^^^^^^^^^^^^^^^^^^^ --------------------- Parameter declared here
+
+error[invalid-argument-type]: Argument to function `resolve_target_squad` is incorrect
+   --> apps\discord_bot\src\plugins\squads.py:164:63
+    |
+164 |             squad = await resolve_target_squad(ctx, steam_id, self.unidad)
+    |                                                               ^^^^^^^^^^^ Expected `str | None`, found `int | None`
+info: element `int` of union `int | None` is not assignable to `str | None`
+info: Function defined here
+  --> apps\discord_bot\src\plugins\squads.py:20:11
+   |
+20 | async def resolve_target_squad(ctx: crescent.Context, steam_id: str, unidad_tag: str | None = None) -> SquadData:
+   |           ^^^^^^^^^^^^^^^^^^^^                                       ----------------------------- Parameter declared here
+
+error[invalid-argument-type]: Argument to function `get_steam_id_from_member` is incorrect
+   --> apps\discord_bot\src\plugins\squads.py:178:51
+    |
+178 |         steam_id = await get_steam_id_from_member(ctx.member, ctx)
+    |                                                   ^^^^^^^^^^ Expected `Member`, found `Member | None`
+info: element `None` of union `Member | None` is not assignable to `Member`
+info: Function defined here
+  --> apps\discord_bot\src\plugins\squads.py:52:11
+   |
+52 | async def get_steam_id_from_member(member: hikari.Member, ctx: crescent.Context) -> str:
+   |           ^^^^^^^^^^^^^^^^^^^^^^^^ --------------------- Parameter declared here
+
+error[invalid-argument-type]: Argument to function `resolve_target_squad` is incorrect
+   --> apps\discord_bot\src\plugins\squads.py:183:63
+    |
+183 |             squad = await resolve_target_squad(ctx, steam_id, self.unidad)
+    |                                                               ^^^^^^^^^^^ Expected `str | None`, found `int | None`
+info: element `int` of union `int | None` is not assignable to `str | None`
+info: Function defined here
+  --> apps\discord_bot\src\plugins\squads.py:20:11
+   |
+20 | async def resolve_target_squad(ctx: crescent.Context, steam_id: str, unidad_tag: str | None = None) -> SquadData:
+   |           ^^^^^^^^^^^^^^^^^^^^                                       ----------------------------- Parameter declared here
+
+error[invalid-argument-type]: Argument to bound method `APIClient.get_squad_leaderboard` is incorrect
+   --> apps\discord_bot\src\plugins\squads.py:211:67
+    |
+211 |             squads = await plugin.model.api.get_squad_leaderboard(self.sort_by)
+    |                                                                   ^^^^^^^^^^^^ Expected `str`, found `int | str`
+info: element `int` of union `int | str` is not assignable to `str`
+info: Method defined here
+   --> apps\discord_bot\src\api_client.py:426:15
+    |
+426 |     async def get_squad_leaderboard(self, sort_by: str = "kills") -> List[schemas.SquadData]:
+    |               ^^^^^^^^^^^^^^^^^^^^^       ---------------------- Parameter declared here
+
+error[unresolved-attribute]: Attribute `capitalize` is not defined on `int` in union `int | str`
+   --> apps\discord_bot\src\plugins\squads.py:223:64
+    |
+223 |             embed = hikari.Embed(title=f"­ƒÅå Top Pelotones (Por {self.sort_by.capitalize()})", description=desc, color=UIColors.GOLD)
+    |                                                                 ^^^^^^^^^^^^^^^^^^^^^^^
+
+error[invalid-argument-type]: Argument to function `get_steam_id_from_member` is incorrect
+   --> apps\discord_bot\src\plugins\squads.py:236:51
+    |
+236 |         steam_id = await get_steam_id_from_member(ctx.member, ctx)
+    |                                                   ^^^^^^^^^^ Expected `Member`, found `Member | None`
+info: element `None` of union `Member | None` is not assignable to `Member`
+info: Function defined here
+  --> apps\discord_bot\src\plugins\squads.py:52:11
+   |
+52 | async def get_steam_id_from_member(member: hikari.Member, ctx: crescent.Context) -> str:
+   |           ^^^^^^^^^^^^^^^^^^^^^^^^ --------------------- Parameter declared here
+
+error[unresolved-attribute]: Attribute `id` is not defined on `None` in union `Member | None`
+   --> apps\discord_bot\src\plugins\squads.py:240:31
+    |
+240 |         if self.usuario.id == ctx.member.id:
+    |                               ^^^^^^^^^^^^^
+
+error[unresolved-attribute]: Attribute `steam_id` is not defined on `None` in union `PlayerResponse | None`
+   --> apps\discord_bot\src\plugins\squads.py:252:20
+    |
+252 |             if not target_player.steam_id:
+    |                    ^^^^^^^^^^^^^^^^^^^^^^
+
+error[unresolved-attribute]: Attribute `username` is not defined on `None` in union `Member | None`
+   --> apps\discord_bot\src\plugins\squads.py:266:34
+    |
+266 | ÔÇª     description=f"**{ctx.member.username}** te ha invitado a unirte al pelot├│n **[{squad.tag}] {squad.name}**.\n\n┬┐Aceptas la invitÔÇª
+    |                        ^^^^^^^^^^^^^^^^^^^
+
+error[unresolved-attribute]: Attribute `steam_id` is not defined on `None` in union `PlayerResponse | None`
+   --> apps\discord_bot\src\plugins\squads.py:304:20
+    |
+304 |         steam_id = player.steam_id
+    |                    ^^^^^^^^^^^^^^^
+
+error[invalid-argument-type]: Argument to function `get_steam_id_from_member` is incorrect
+   --> apps\discord_bot\src\plugins\squads.py:325:51
+    |
+325 |         steam_id = await get_steam_id_from_member(ctx.member, ctx)
+    |                                                   ^^^^^^^^^^ Expected `Member`, found `Member | None`
+info: element `None` of union `Member | None` is not assignable to `Member`
+info: Function defined here
+  --> apps\discord_bot\src\plugins\squads.py:52:11
+   |
+52 | async def get_steam_id_from_member(member: hikari.Member, ctx: crescent.Context) -> str:
+   |           ^^^^^^^^^^^^^^^^^^^^^^^^ --------------------- Parameter declared here
+
+error[invalid-argument-type]: Argument to function `resolve_target_squad` is incorrect
+   --> apps\discord_bot\src\plugins\squads.py:330:63
+    |
+330 |             squad = await resolve_target_squad(ctx, steam_id, self.unidad)
+    |                                                               ^^^^^^^^^^^ Expected `str | None`, found `int | None`
+info: element `int` of union `int | None` is not assignable to `str | None`
+info: Function defined here
+  --> apps\discord_bot\src\plugins\squads.py:20:11
+   |
+20 | async def resolve_target_squad(ctx: crescent.Context, steam_id: str, unidad_tag: str | None = None) -> SquadData:
+   |           ^^^^^^^^^^^^^^^^^^^^                                       ----------------------------- Parameter declared here
+
+error[unresolved-attribute]: Attribute `steam_id` is not defined on `None` in union `PlayerResponse | None`
+   --> apps\discord_bot\src\plugins\squads.py:336:31
+    |
+336 |             target_steam_id = target_player.steam_id
+    |                               ^^^^^^^^^^^^^^^^^^^^^^
+
+error[unresolved-attribute]: Attribute `steam_id` is not defined on `None` in union `PlayerResponse | None`
+   --> apps\discord_bot\src\plugins\squads.py:379:31
+    |
+379 |             target_steam_id = target_player.steam_id
+    |                               ^^^^^^^^^^^^^^^^^^^^^^
+
+error[invalid-argument-type]: Argument to bound method `APIClient.get_squad_by_tag` is incorrect
+   --> apps\discord_bot\src\plugins\squads.py:400:65
+    |
+400 |                 squad = await plugin.model.api.get_squad_by_tag(self.unidad)
+    |                                                                 ^^^^^^^^^^^ Expected `str`, found `int & ~AlwaysFalsy`
+info: Method defined here
+   --> apps\discord_bot\src\api_client.py:438:15
+    |
+438 |     async def get_squad_by_tag(self, tag: str) -> schemas.SquadData:
+    |               ^^^^^^^^^^^^^^^^       -------- Parameter declared here
+
+error[invalid-argument-type]: Argument to function `get_steam_id_from_member` is incorrect
+   --> apps\discord_bot\src\plugins\squads.py:402:59
+    |
+402 |                 steam_id = await get_steam_id_from_member(ctx.member, ctx)
+    |                                                           ^^^^^^^^^^ Expected `Member`, found `Member | None`
+info: element `None` of union `Member | None` is not assignable to `Member`
+info: Function defined here
+  --> apps\discord_bot\src\plugins\squads.py:52:11
+   |
+52 | async def get_steam_id_from_member(member: hikari.Member, ctx: crescent.Context) -> str:
+   |           ^^^^^^^^^^^^^^^^^^^^^^^^ --------------------- Parameter declared here
+
+error[invalid-argument-type]: Argument to bound method `APIClient.get_squad_internal_leaderboard` is incorrect
+   --> apps\discord_bot\src\plugins\squads.py:407:82
+    |
+407 |             lb = await plugin.model.api.get_squad_internal_leaderboard(squad.id, self.sort_by)
+    |                                                                                  ^^^^^^^^^^^^ Expected `str`, found `int | str`
+info: element `int` of union `int | str` is not assignable to `str`
+info: Method defined here
+   --> apps\discord_bot\src\api_client.py:430:15
+    |
+430 |     async def get_squad_internal_leaderboard(self, squad_id: str, sort_by: str = "kills") -> List[schemas.SquadMemberData]:
+    |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^                      ---------------------- Parameter declared here
+
+error[invalid-argument-type]: Method `__getitem__` of type `bound method dict[str, str].__getitem__(key: str, /) -> str` cannot be called with key of type `int` on object of type `dict[str, str]`
+   --> apps\discord_bot\src\plugins\squads.py:428:65
+    |
+428 |                 title=f"­ƒÅå Top [{squad.tag}] {squad.name} - Por {sort_names[self.sort_by]}", 
+    |                                                                  ^^^^^^^^^^
+
+error[invalid-argument-type]: Argument is incorrect
+   --> apps\discord_bot\tests\test_commands.py:383:98
+    |
+383 |     plugin._client.model.api.get_player_by_steam = AsyncMock(return_value=schemas.PlayerResponse(**player_data))
+    |                                                                                                  ^^^^^^^^^^^^^ Expected `LaxBool`, found `str | list[str] | list[dict[str, str]]`
+info: element `list[str]` of union `str | list[str] | list[dict[str, str]]` is not assignable to `float | bytes | str | Decimal`
+
+error[invalid-argument-type]: Argument is incorrect
+   --> apps\discord_bot\tests\test_commands.py:383:98
+    |
+383 |     plugin._client.model.api.get_player_by_steam = AsyncMock(return_value=schemas.PlayerResponse(**player_data))
+    |                                                                                                  ^^^^^^^^^^^^^ Expected `LaxInt`, found `str | list[str] | list[dict[str, str]]`
+info: element `list[str]` of union `str | list[str] | list[dict[str, str]]` is not assignable to `float | bytes | str | ... omitted 3 union elements`
+
+warning[pydantic-discarded-extra-argument]: Extra argument `claims` is discarded by Pydantic
+   --> apps\discord_bot\tests\test_commands.py:487:101
+    |
+487 |       mock_api.get_player_rewards_balance = AsyncMock(return_value=schemas.PlayerRewardBalanceResponse(
+    |  _____________________________________________________________________________________________________^
+488 | |         steam_id="76561198000000001",
+489 | |         discord_id="123456",
+490 | |         in_game_name="ProGamer",
+491 | |         reward_points=75,
+492 | |         total_seeding_minutes=150,
+493 | |         claims=[schemas.RewardClaimResponse(id=1, steam_id="76561198000000001", reward_name="Key Game", claim_code="MF-AAAA-BBBB", ÔÇª
+494 | |     ))
+    | |_____^
+
+error[not-subscriptable]: Cannot subscript object of type `None` with no `__getitem__` method
+  --> apps\discord_bot\tests\test_steam_link_interaction.py:53:16
+   |
+53 |         assert payload["discord_id"] == str(user_id)
+   |                ^^^^^^^^^^^^^^^^^^^^^
+
+error[unsupported-operator]: Unsupported `not in` operation
+  --> apps\discord_bot\tests\test_steam_link_interaction.py:54:16
+   |
+54 |         assert "web_session_id" not in payload
+   |                ----------------^^^^^^^^-------
+   |                |                       |
+   |                |                       Has type `dict[str, Any] | None`
+   |                Has type `Literal["web_session_id"]`
+info: Operation fails because operator `not in` is not supported between objects of type `Literal["web_session_id"]` and `None`
+
+error[invalid-argument-type]: Argument to function `_build_user_steam_link` is incorrect
+   --> apps\discord_bot\tests\test_steam_link_interaction.py:101:49
+    |
+101 |     link = account._build_user_steam_link(user, 1552776537772920963)
+    |                                                 ^^^^^^^^^^^^^^^^^^^ Expected `Snowflake | None`, found `Literal[1552776537772920963]`
+info: Function defined here
+  --> apps\discord_bot\src\plugins\account.py:59:5
+   |
+59 | def _build_user_steam_link(user: hikari.User, guild_id: Optional[hikari.Snowflake] = None) -> str:
+   |     ^^^^^^^^^^^^^^^^^^^^^^                    ------------------------------------------- Parameter declared here
+
+error[not-subscriptable]: Cannot subscript object of type `None` with no `__getitem__` method
+   --> apps\discord_bot\tests\test_steam_link_interaction.py:104:12
+    |
+104 |     assert payload["discord_id"] == str(A)
+    |            ^^^^^^^^^^^^^^^^^^^^^
+
+error[unsupported-operator]: Unsupported `not in` operation
+   --> apps\discord_bot\tests\test_steam_link_interaction.py:105:12
+    |
+105 |     assert "discord_avatar" not in payload
+    |            ----------------^^^^^^^^-------
+    |            |                       |
+    |            |                       Has type `dict[str, Any] | None`
+    |            Has type `Literal["discord_avatar"]`
+info: Operation fails because operator `not in` is not supported between objects of type `Literal["discord_avatar"]` and `None`
+
+error[unsupported-operator]: Unsupported `in` operation
+  --> apps\discord_bot\tests\test_trace.py:49:12
+   |
+49 |     assert "76561198000000001" in ev1.details
+   |            -------------------^^^^-----------
+   |            |                      |
+   |            |                      Has type `str | None`
+   |            Has type `Literal["76561198000000001"]`
+info: Operation fails because operator `in` is not supported between objects of type `Literal["76561198000000001"]` and `None`
+
+error[unsupported-operator]: Unsupported `in` operation
+  --> apps\discord_bot\tests\test_trace.py:55:12
+   |
+55 |     assert "+2 roles" in ev2.details
+   |            ----------^^^^-----------
+   |            |             |
+   |            |             Has type `str | None`
+   |            Has type `Literal["+2 roles"]`
+info: Operation fails because operator `in` is not supported between objects of type `Literal["+2 roles"]` and `None`
+
+error[unsupported-operator]: Unsupported `in` operation
+  --> apps\discord_bot\tests\test_trace.py:69:12
+   |
+69 |     assert "Connection refused" in ev.error
+   |            --------------------^^^^--------
+   |            |                       |
+   |            |                       Has type `str | None`
+   |            Has type `Literal["Connection refused"]`
+info: Operation fails because operator `in` is not supported between objects of type `Literal["Connection refused"]` and `None`
+
+error[unresolved-reference]: Name `payment_records` used when not defined
+   --> tools\clone_prod_to_env.py:171:12
+    |
+171 |         if payment_records:
+    |            ^^^^^^^^^^^^^^^
+
+error[unresolved-reference]: Name `payment_records` used when not defined
+   --> tools\clone_prod_to_env.py:172:43
+    |
+172 |             logger.info(f"Insertando {len(payment_records)} payment_records...")
+    |                                           ^^^^^^^^^^^^^^^
+
+error[unresolved-reference]: Name `payment_records` used when not defined
+   --> tools\clone_prod_to_env.py:181:16
+    |
+181 |             ), payment_records)
+    |                ^^^^^^^^^^^^^^^
+
+error[missing-argument]: No arguments provided for required parameters `code`, `role_type`
+  --> tools\import_vips.py:56:32
+   |
+56 |                 founder_role = Role(id=FUNDADOR_ROLE_ID, name="Fundador")
+   |                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[unresolved-attribute]: Object of type `PlayerResponse` has no attribute `get`
+   --> tools\sim_local_suite.py:139:50
+    |
+139 | ÔÇª     self.assert_true(p_by_dc is not None and p_by_dc.get("steam_id") == self.test_steam_id, "get_player_by_discord retorna el SteamÔÇª
+    |                                                ^^^^^^^^^^^
+
+error[not-subscriptable]: Cannot subscript object of type `RewardItemResponse` with no `__getitem__` method
+   --> tools\sim_local_suite.py:156:18
+    |
+156 |         costs = [item["cost_points"] for item in catalog]
+    |                  ^^^^^^^^^^^^^^^^^^^
+
+error[unresolved-attribute]: Object of type `PlayerRewardBalanceResponse` has no attribute `get`
+   --> tools\sim_local_suite.py:189:26
+    |
+189 |         initial_points = balance.get("reward_points", 0)
+    |                          ^^^^^^^^^^^
+
+error[unresolved-attribute]: Object of type `PlayerRewardBalanceResponse` has no attribute `get`
+   --> tools\sim_local_suite.py:206:26
+    |
+206 |         self.assert_true(balance_check.get("reward_points") == initial_points + 250, "Balance se mantiene ├¡ntegro tras rechazo")
+    |                          ^^^^^^^^^^^^^^^^^
+
+error[unresolved-attribute]: Object of type `RewardClaimResultResponse` has no attribute `get`
+   --> tools\sim_local_suite.py:215:26
+    |
+215 |         self.assert_true(claim_result.get("delivery", {}).get("delivery_type") == "AUTOMATIC", "Entrega autom├ítica para VIP")
+    |                          ^^^^^^^^^^^^^^^^
+
+error[unresolved-attribute]: Object of type `RewardClaimResultResponse` has no attribute `get`
+   --> tools\sim_local_suite.py:216:26
+    |
+216 |         self.assert_true(claim_result.get("claim_code") is not None, f"C├│digo de canje generado: {claim_result.get('claim_code')}")
+    |                          ^^^^^^^^^^^^^^^^
+
+error[unresolved-attribute]: Object of type `RewardClaimResultResponse` has no attribute `get`
+   --> tools\sim_local_suite.py:216:99
+    |
+216 |         self.assert_true(claim_result.get("claim_code") is not None, f"C├│digo de canje generado: {claim_result.get('claim_code')}")
+    |                                                                                                   ^^^^^^^^^^^^^^^^
+
+error[unresolved-attribute]: Object of type `PlayerRewardBalanceResponse` has no attribute `get`
+   --> tools\sim_local_suite.py:239:22
+    |
+239 |         bal_before = (await self.client.get_player_rewards_balance(self.test_discord_id)).get("reward_points", 0)
+    |                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[not-subscriptable]: Cannot subscript object of type `RewardClaimResultResponse` with no `__getitem__` method
+   --> tools\sim_local_suite.py:243:22
+    |
+243 |         claim_code = claim_res["claim_code"]
+    |                      ^^^^^^^^^^^^^^^^^^^^^^^
+
+error[not-subscriptable]: Cannot subscript object of type `RewardClaimResultResponse` with no `__getitem__` method
+   --> tools\sim_local_suite.py:244:26
+    |
+244 |         self.assert_true(claim_res["delivery"]["delivery_type"] == "MANUAL_TICKET", "Tipo de entrega MANUAL_TICKET detectado")
+    |                          ^^^^^^^^^^^^^^^^^^^^^
+
+error[unresolved-attribute]: Object of type `PlayerRewardBalanceResponse` has no attribute `get`
+   --> tools\sim_local_suite.py:256:21
+    |
+256 |         bal_after = (await self.client.get_player_rewards_balance(self.test_discord_id)).get("reward_points", 0)
+    |                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Found 147 diagnostics

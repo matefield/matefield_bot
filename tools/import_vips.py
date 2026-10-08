@@ -53,7 +53,7 @@ def main(csv_path, dry_run=True):
         if not dry_run:
             founder_role = session.exec(select(Role).where(Role.id == FUNDADOR_ROLE_ID)).first()
             if not founder_role:
-                founder_role = Role(id=FUNDADOR_ROLE_ID, name="Fundador")
+                founder_role = Role(id=FUNDADOR_ROLE_ID, name="Fundador", code="FUNDADOR", role_type="SPECIAL")
                 session.add(founder_role)
                 session.commit()
         
