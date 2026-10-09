@@ -1,11 +1,11 @@
-from datetime import datetime, timezone, timedelta
+from datetime import UTC, datetime, timedelta
+
 import pytest
+import src.connections.apis.rcon as rcon_module
 from httpx import AsyncClient
 from sqlmodel.ext.asyncio.session import AsyncSession
+from src.connections.databases.db import BotConfig, Membership, Player, Role
 from wardogs_schemas import v1 as schemas
-
-import src.connections.apis.rcon as rcon_module
-from src.connections.databases.db import Player, Membership, BotConfig, Role
 
 
 @pytest.fixture(autouse=True)
@@ -17,7 +17,7 @@ def mock_rcon(mocker):
 
 @pytest.mark.asyncio
 async def test_sync_expires_old_memberships(client: AsyncClient, session: AsyncSession):
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     p = Player(steam_id="123", discord_id="456")
     m = Membership(
         steam_id="123",
@@ -44,7 +44,7 @@ async def test_sync_expires_old_memberships(client: AsyncClient, session: AsyncS
 async def test_sync_adds_authorized_slots(client: AsyncClient, session: AsyncSession, mocker):
     mock_add = mocker.patch.object(rcon_module.rcon_client, 'sync_reserved_slots')
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     p = Player(steam_id="VALID_STEAM_ID", discord_id="456")
     m = Membership(
         steam_id="VALID_STEAM_ID",
@@ -93,7 +93,7 @@ async def test_sync_returns_discord_mappings(client: AsyncClient, session: Async
 async def test_sync_permanent_memberships(client: AsyncClient, session: AsyncSession, mocker):
     mock_add = mocker.patch.object(rcon_module.rcon_client, 'sync_reserved_slots')
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     p = Player(steam_id="PERM_STEAM_ID", discord_id="456")
     m = Membership(
         steam_id="PERM_STEAM_ID",
@@ -116,7 +116,7 @@ async def test_sync_permanent_memberships(client: AsyncClient, session: AsyncSes
 
 @pytest.mark.asyncio
 async def test_sync_keeps_active_membership_in_sync_data(client: AsyncClient, session: AsyncSession):
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     p = Player(steam_id="EXISTING_VIP_STEAM", discord_id="111222333")
     m = Membership(
         steam_id="EXISTING_VIP_STEAM",
@@ -143,7 +143,7 @@ async def test_sync_keeps_active_membership_in_sync_data(client: AsyncClient, se
 
 @pytest.mark.asyncio
 async def test_sync_only_removes_role_when_all_memberships_expire(client: AsyncClient, session: AsyncSession):
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     p = Player(steam_id="MULTI_VIP_STEAM", discord_id="444555666")
     m_expired = Membership(
         steam_id="MULTI_VIP_STEAM",
@@ -187,10 +187,10 @@ async def test_sync_only_removes_role_when_all_memberships_expire(client: AsyncC
 
 @pytest.mark.asyncio
 async def test_sync_preserves_special_role_on_expiration(client: AsyncClient, session: AsyncSession):
-    from src.connections.databases.db import PlayerRole
     from sqlmodel import select
+    from src.connections.databases.db import PlayerRole
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     p = Player(steam_id="ROLE_EXPIRE_STEAM", discord_id="777888999")
     r = Role(code="CUSTOM_VIP", name="Custom VIP", role_type="SPECIAL", discord_role_id="111999")
     session.add_all([p, r])

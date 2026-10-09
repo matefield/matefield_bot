@@ -1,19 +1,32 @@
-import asyncio
-from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from datetime import UTC, datetime
+from typing import Any
+
 from fastapi import HTTPException
-from sqlmodel import select, func, text, col
 from sqlalchemy import update
 from sqlalchemy.exc import IntegrityError
+from sqlmodel import col, func, select, text
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from src.connections.databases.db import Player, SteamLinkRedemption, Membership, Role, PlayerRole, MatchPlayerStats, PlayerSession
-from src.connections.apis.steam import get_player_summary, get_player_summaries
-from src.modules.v1.schemas.dtos import LinkAccountRequest, UnlinkAccountRequest, EditPlayerRequest
+from src.connections.apis.steam import get_player_summaries
+from src.connections.databases.db import (
+    MatchPlayerStats,
+    Membership,
+    Player,
+    PlayerRole,
+    PlayerSession,
+    Role,
+    SteamLinkRedemption,
+)
+from src.modules.v1.schemas.dtos import (
+    EditPlayerRequest,
+    LinkAccountRequest,
+    UnlinkAccountRequest,
+)
+
 
 class PlayersService:
     @staticmethod
-    async def link_account(req: LinkAccountRequest, session: AsyncSession, redemption: Optional[SteamLinkRedemption] = None) -> Dict[str, Any]:
+    async def link_account(req: LinkAccountRequest, session: AsyncSession, redemption: SteamLinkRedemption | None = None) -> dict[str, Any]:
         # 1. Validar que el SteamID no esté ya vinculado a otra cuenta de Discord
         player = await session.get(Player, req.steam_id)
         if player and player.discord_id and player.discord_id != req.discord_id:
@@ -40,7 +53,8 @@ class PlayersService:
                 session.add(redemption)
                 await session.flush()
             if not player:
-                session.add(Player(steam_id=req.steam_id, discord_id=req.discord_id))
+                player = Player(steam_id=req.steam_id, discord_id=req.discord_id)
+                session.add(player)
             else:
                 # Compare-and-set prevents two Discord users claiming the same unlinked player.
                 result = await session.exec(
@@ -51,6 +65,17 @@ class PlayersService:
                 if result.rowcount != 1:
                     await session.rollback()
                     return await PlayersService._resolve_link_race(req, session)
+            
+            # Retroactively evaluate seeding points now that Discord is linked
+            if player:
+                player.discord_id = req.discord_id
+                from src.connections.databases.db import BotConfig
+                cfg = await session.get(BotConfig, "SEEDING_MINUTES_PER_POINT")
+                minutes_per_point = int(cfg.config_value) if (cfg and cfg.config_value and cfg.config_value.isdigit()) else 30
+                from src.modules.v1.services.rewards_service import RewardsService
+                RewardsService.evaluate_global_seeding(player, minutes_per_point)
+                session.add(player)
+
             await session.commit()
         except IntegrityError:
             # PK + unique discord_id also protect simultaneous new-player inserts.
@@ -59,7 +84,7 @@ class PlayersService:
         return {"ok": True, "message": "Account linked", "already_linked": False}
 
     @staticmethod
-    async def _resolve_link_race(req: LinkAccountRequest, session: AsyncSession) -> Dict[str, Any]:
+    async def _resolve_link_race(req: LinkAccountRequest, session: AsyncSession) -> dict[str, Any]:
         player = await session.get(Player, req.steam_id)
         if player and player.discord_id == req.discord_id:
             return {"ok": True, "message": "Account already linked", "already_linked": True}
@@ -69,7 +94,7 @@ class PlayersService:
         )
 
     @staticmethod
-    async def unlink_account(req: UnlinkAccountRequest, session: AsyncSession) -> Dict[str, Any]:
+    async def unlink_account(req: UnlinkAccountRequest, session: AsyncSession) -> dict[str, Any]:
         statement = select(Player).where(Player.discord_id == req.discord_id)
         player = (await session.exec(statement)).first()
         if not player:
@@ -80,7 +105,7 @@ class PlayersService:
         return {"ok": True, "message": "Account unlinked successfully"}
 
     @staticmethod
-    async def get_by_discord(discord_id: str, session: AsyncSession) -> Dict[str, Any]:
+    async def get_by_discord(discord_id: str, session: AsyncSession) -> dict[str, Any]:
         statement = select(Player).where(Player.discord_id == discord_id)
         player = (await session.exec(statement)).first()
         if not player:
@@ -88,17 +113,23 @@ class PlayersService:
         return {
             "steam_id": player.steam_id,
             "in_game_name": player.in_game_name,
+            "discord_id": player.discord_id,
+            "role": "PLAYER",
+            "roles": [],
+            "active_memberships": [],
+            "is_banned": False,
+            "reward_points": player.reward_points,
             "custom_welcome_message": player.custom_welcome_message,
             "observations": player.observations,
         }
 
     @staticmethod
-    async def get_by_steam(steam_id: str, session: AsyncSession) -> Dict[str, Any]:
+    async def get_by_steam(steam_id: str, session: AsyncSession) -> dict[str, Any]:
         player = await session.get(Player, steam_id)
         if not player:
             raise HTTPException(status_code=404, detail="Player not found")
             
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         stmt = select(Membership).where(
             Membership.steam_id == steam_id,
             Membership.is_active == True
@@ -141,21 +172,25 @@ class PlayersService:
             primary_role = active_roles[0]
 
         return {
+            "steam_id": player.steam_id,
             "name": player.in_game_name,
             "in_game_name": player.in_game_name,
             "avatar_url": player.avatar_url,
             "discord_id": player.discord_id, 
             "custom_welcome_message": player.custom_welcome_message,
             "observations": player.observations,
-            "active_role": primary_role,
+            "role": primary_role or "PLAYER",
+            "active_role": primary_role or "PLAYER",
             "is_banned": is_banned,
+            "reward_points": player.reward_points,
             "memberships": active_memberships,
             "active_memberships": active_memberships,
+            "roles": [r.name if (r.name and not r.name.isdigit()) else r.code for r in special_roles if r.role_type == "SPECIAL"],
             "special_roles": [r.name if (r.name and not r.name.isdigit()) else r.code for r in special_roles if r.role_type == "SPECIAL"]
         }
 
     @staticmethod
-    async def get_stats(steam_id: str, session: AsyncSession) -> Dict[str, Any]:
+    async def get_stats(steam_id: str, session: AsyncSession) -> dict[str, Any]:
         statement = (
             select(
                 func.sum(MatchPlayerStats.kills).label("total_kills"),
@@ -180,7 +215,7 @@ class PlayersService:
         }
 
     @staticmethod
-    async def edit_player(steam_id: str, req: EditPlayerRequest, session: AsyncSession) -> Dict[str, Any]:
+    async def edit_player(steam_id: str, req: EditPlayerRequest, session: AsyncSession) -> dict[str, Any]:
         player = await session.get(Player, steam_id)
         if not player:
             raise HTTPException(status_code=404, detail="Player not found")
@@ -206,7 +241,7 @@ class PlayersService:
         return {"ok": True, "message": "Player updated"}
 
     @staticmethod
-    async def set_welcome_message(steam_id: str, message: str, session: AsyncSession) -> Dict[str, Any]:
+    async def set_welcome_message(steam_id: str, message: str, session: AsyncSession) -> dict[str, Any]:
         player = await session.get(Player, steam_id)
         if not player:
             raise HTTPException(status_code=404, detail="Player not found")
@@ -216,7 +251,7 @@ class PlayersService:
         return {"ok": True, "message": "Welcome message updated"}
 
     @staticmethod
-    async def get_paginated_players(page: int, limit: int, linked: str, session: AsyncSession) -> Dict[str, Any]:
+    async def get_paginated_players(page: int, limit: int, linked: str, session: AsyncSession) -> dict[str, Any]:
         # Build the optional filter once and reuse it in both count and data queries.
         linked_filter = None
         if linked == "linked":
@@ -236,7 +271,7 @@ class PlayersService:
         data_stmt = data_stmt.order_by(col(Player.steam_id)).offset(offset).limit(limit)
         db_players = (await session.exec(data_stmt)).all()
 
-        paginated_results: List[Dict[str, Any]] = []
+        paginated_results: list[dict[str, Any]] = []
         for p in db_players:
             paginated_results.append({
                 "steam_id": p.steam_id,
@@ -257,7 +292,7 @@ class PlayersService:
                     
             stmt = select(Membership).where(col(Membership.steam_id).in_(steam_ids), Membership.is_active == True).order_by(col(Membership.id))
             memberships = (await session.exec(stmt)).all()
-            mem_map: Dict[str, List[str]] = {}
+            mem_map: dict[str, list[str]] = {}
             for m in memberships:
                 mem_map.setdefault(m.steam_id, []).append(m.membership_type)
             for p in paginated_results:
@@ -274,7 +309,7 @@ class PlayersService:
         }
 
     @staticmethod
-    async def get_steam_players_batch(steam_ids: str) -> Dict[str, Any]:
+    async def get_steam_players_batch(steam_ids: str) -> dict[str, Any]:
         ids_list = [sid.strip() for sid in steam_ids.split(",") if sid.strip()]
         if not ids_list:
             return {}

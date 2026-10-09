@@ -1,27 +1,37 @@
-import io
 import csv
-from typing import Any, Dict, List, Optional
+import io
+from typing import Any
+
 from fastapi import HTTPException
 from fastapi.responses import StreamingResponse
-from sqlmodel import select, func, col
+from sqlmodel import col, func, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from src.connections.databases.db import (
-    BotConfig, MembershipType, Membership, Player, Role,
-    PlayerRole, Team, Match, MatchTeamStats, MatchPlayerStats
+    BotConfig,
+    Match,
+    MatchPlayerStats,
+    MatchTeamStats,
+    Membership,
+    MembershipType,
+    Player,
+    PlayerRole,
+    Role,
+    Team,
 )
-from src.modules.v1.schemas.dtos import SetBotConfigRequest, QuotaUpdateRequest
+from src.modules.v1.schemas.dtos import SetBotConfigRequest
+
 
 class ConfigService:
     @staticmethod
-    async def get_bot_config(key: str, session: AsyncSession) -> Dict[str, Any]:
+    async def get_bot_config(key: str, session: AsyncSession) -> dict[str, Any]:
         config = await session.get(BotConfig, key)
         if not config:
             raise HTTPException(status_code=404, detail="Config key not found")
         return {"key": config.config_key, "value": config.config_value}
 
     @staticmethod
-    async def set_bot_config(req: SetBotConfigRequest, session: AsyncSession) -> Dict[str, Any]:
+    async def set_bot_config(req: SetBotConfigRequest, session: AsyncSession) -> dict[str, Any]:
         config = await session.get(BotConfig, req.key)
         if not config:
             config = BotConfig(config_key=req.key, config_value=req.value)
@@ -32,7 +42,7 @@ class ConfigService:
         return {"ok": True, "message": "Config updated"}
 
     @staticmethod
-    async def delete_bot_config(key: str, session: AsyncSession) -> Dict[str, Any]:
+    async def delete_bot_config(key: str, session: AsyncSession) -> dict[str, Any]:
         config = await session.get(BotConfig, key)
         if config:
             await session.delete(config)
@@ -40,13 +50,15 @@ class ConfigService:
         return {"ok": True, "message": "Config deleted"}
 
     @staticmethod
-    async def get_all_bot_configs(session: AsyncSession) -> Dict[str, Any]:
+    async def get_all_bot_configs(session: AsyncSession) -> dict[str, Any]:
         configs = (await session.exec(select(BotConfig))).all()
         return {"configs": {c.config_key: c.config_value for c in configs}}
 
     @staticmethod
-    async def get_quotas(session: AsyncSession) -> Dict[str, Any]:
-        from src.modules.v1.services.membership_types_service import MembershipTypesService
+    async def get_quotas(session: AsyncSession) -> dict[str, Any]:
+        from src.modules.v1.services.membership_types_service import (
+            MembershipTypesService,
+        )
         await MembershipTypesService._ensure_defaults(session)
 
         types = (await session.exec(select(MembershipType))).all()
@@ -65,7 +77,7 @@ class ConfigService:
         return {"quotas": result}
 
     @staticmethod
-    async def update_quota(membership_type: str, max_quota: Optional[int], session: AsyncSession) -> Dict[str, Any]:
+    async def update_quota(membership_type: str, max_quota: int | None, session: AsyncSession) -> dict[str, Any]:
         normalized_type = membership_type.strip().upper()
         
         # Update MembershipType

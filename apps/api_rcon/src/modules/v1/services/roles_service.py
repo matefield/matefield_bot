@@ -1,14 +1,16 @@
-from typing import Any, Dict, List, Optional
+from typing import Any
+
 from fastapi import HTTPException
-from sqlmodel import select, func, or_
+from sqlmodel import func, or_, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from src.connections.databases.db import Player, Role, PlayerRole
+from src.connections.databases.db import Player, PlayerRole, Role
 from src.modules.v1.schemas.dtos import RoleRegisterRequest
+
 
 class RolesService:
     @staticmethod
-    async def _find_role(role_identifier: str, session: AsyncSession) -> Optional[Role]:
+    async def _find_role(role_identifier: str, session: AsyncSession) -> Role | None:
         clean_id = role_identifier.strip()
         conditions = [
             func.upper(Role.code) == clean_id.upper(),
@@ -20,7 +22,7 @@ class RolesService:
         return (await session.exec(select(Role).where(or_(*conditions)))).first()
 
     @staticmethod
-    async def register_role(req: RoleRegisterRequest, session: AsyncSession) -> Dict[str, Any]:
+    async def register_role(req: RoleRegisterRequest, session: AsyncSession) -> dict[str, Any]:
         normalized_code = req.code.strip().upper()
         existing = (await session.exec(select(Role).where(Role.code == normalized_code))).first()
         if existing:
@@ -45,7 +47,7 @@ class RolesService:
         return {"ok": True, "message": f"Role '{normalized_code}' registered successfully as type '{normalized_type}'"}
 
     @staticmethod
-    async def get_all_roles(session: AsyncSession) -> List[Dict[str, Any]]:
+    async def get_all_roles(session: AsyncSession) -> list[dict[str, Any]]:
         roles = (await session.exec(select(Role).order_by(Role.id))).all()
         return [
             {
@@ -58,7 +60,7 @@ class RolesService:
         ]
 
     @staticmethod
-    async def get_players_by_role(role_id: str, session: AsyncSession) -> List[Dict[str, Any]]:
+    async def get_players_by_role(role_id: str, session: AsyncSession) -> list[dict[str, Any]]:
         role = await RolesService._find_role(role_id, session)
         if not role:
             raise HTTPException(status_code=404, detail="Role not found")
@@ -76,7 +78,7 @@ class RolesService:
         ]
 
     @staticmethod
-    async def add_special_role(steam_id: str, role_id: str, session: AsyncSession) -> Dict[str, Any]:
+    async def add_special_role(steam_id: str, role_id: str, session: AsyncSession) -> dict[str, Any]:
         player = await session.get(Player, steam_id)
         if not player:
             raise HTTPException(status_code=404, detail="Player not found")
@@ -101,7 +103,7 @@ class RolesService:
         return {"ok": True, "message": f"Role '{role.code}' added to player"}
 
     @staticmethod
-    async def remove_special_role(steam_id: str, role_id: str, session: AsyncSession) -> Dict[str, Any]:
+    async def remove_special_role(steam_id: str, role_id: str, session: AsyncSession) -> dict[str, Any]:
         role = await RolesService._find_role(role_id, session)
         if not role:
             raise HTTPException(status_code=404, detail="Role not found")

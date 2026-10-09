@@ -1,12 +1,13 @@
-import urllib.parse
 import logging
-from typing import Optional, Dict, Any, Tuple
-import httpx
-from sqlmodel import select, func
-from sqlmodel.ext.asyncio.session import AsyncSession
+import urllib.parse
+from typing import Any
 
+import httpx
+from sqlmodel import func, select
+from sqlmodel.ext.asyncio.session import AsyncSession
 from wardogs_config import ENVIRONMENT_SETTINGS
-from src.connections.databases.db import Role, BotConfig, Player
+
+from src.connections.databases.db import BotConfig, Player, Role
 
 logger = logging.getLogger("wardogs.discord_oauth")
 
@@ -18,11 +19,11 @@ _security = ENVIRONMENT_SETTINGS.SECURITY_SETTINGS
 
 class DiscordOAuthService:
     @staticmethod
-    def get_client_id() -> Optional[str]:
+    def get_client_id() -> str | None:
         return _security.DISCORD_CLIENT_ID
 
     @staticmethod
-    def get_client_secret() -> Optional[str]:
+    def get_client_secret() -> str | None:
         return _security.DISCORD_CLIENT_SECRET
 
     @classmethod
@@ -44,7 +45,7 @@ class DiscordOAuthService:
         return f"https://discord.com/oauth2/authorize?{urllib.parse.urlencode(params)}"
 
     @classmethod
-    async def exchange_code_for_token(cls, code: str, redirect_uri: str) -> Dict[str, Any]:
+    async def exchange_code_for_token(cls, code: str, redirect_uri: str) -> dict[str, Any]:
         client_id = cls.get_client_id()
         client_secret = cls.get_client_secret()
 
@@ -68,7 +69,7 @@ class DiscordOAuthService:
             return resp.json()
 
     @classmethod
-    async def fetch_user_profile(cls, access_token: str) -> Dict[str, Any]:
+    async def fetch_user_profile(cls, access_token: str) -> dict[str, Any]:
         headers = {"Authorization": f"Bearer {access_token}"}
         async with httpx.AsyncClient(timeout=10.0) as client:
             resp = await client.get(f"{DISCORD_API_BASE}/users/@me", headers=headers)
@@ -91,7 +92,7 @@ class DiscordOAuthService:
             }
 
     @classmethod
-    async def resolve_guild_id(cls, session: AsyncSession) -> Optional[str]:
+    async def resolve_guild_id(cls, session: AsyncSession) -> str | None:
         # 1. Check explicit settings
         configured = _security.DISCORD_GUILD_ID
         if configured:
@@ -128,7 +129,7 @@ class DiscordOAuthService:
         discord_id: str,
         access_token: str,
         session: AsyncSession,
-    ) -> Tuple[bool, str, Optional[str]]:
+    ) -> tuple[bool, str, str | None]:
         """
         Determina si un usuario tiene privilegios de administrador.
         Retorna (is_admin, motivo, guild_id).
@@ -216,7 +217,7 @@ class DiscordOAuthService:
 
 
     @classmethod
-    async def get_linked_steam_id(cls, discord_id: str, session: AsyncSession) -> Tuple[Optional[str], Optional[str], Optional[str]]:
+    async def get_linked_steam_id(cls, discord_id: str, session: AsyncSession) -> tuple[str | None, str | None, str | None]:
         """Busca si el usuario de Discord ya tiene cuenta vinculada en la base de datos."""
         query = select(Player).where(Player.discord_id == str(discord_id))
         res = await session.exec(query)

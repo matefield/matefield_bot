@@ -1,6 +1,7 @@
+import logging
+
 import crescent
 import hikari
-import logging
 
 logger = logging.getLogger("wardogs.hooks")
 

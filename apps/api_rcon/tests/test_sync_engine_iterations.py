@@ -1,11 +1,4 @@
-from datetime import datetime, timezone, timedelta
-import pytest
-from sqlmodel import select
-from sqlmodel.ext.asyncio.session import AsyncSession
 
-from src.sync_engine import process_sync_tick, SyncEngineState
-from src.connections.databases.db import Player, PlayerSession, Match, MatchPlayerStats, MatchTeamStats, BotConfig, Membership
-from src.modules.v1.services.memberships_service import MembershipsService
 
 
 class MockPlayer:

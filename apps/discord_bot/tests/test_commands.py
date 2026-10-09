@@ -1,7 +1,9 @@
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
-from unittest.mock import MagicMock, AsyncMock, patch
-from src.plugins.memberships import build_player_memberships_view
 from src.api_client import APIClient
+from src.plugins.memberships import build_player_memberships_view
+from wardogs_schemas import dtos as schemas
 
 
 def test_build_player_memberships_view_all_fields():
@@ -78,7 +80,7 @@ async def test_role_set_link_retroactive_grant():
     mock_role.id = 112233
     mock_role.is_managed = False
 
-    cmd = getattr(RoleSetLink, "metadata").owner()
+    cmd = RoleSetLink.metadata.owner()
     cmd.rol = mock_role
 
     mock_member_1 = MagicMock()
@@ -140,7 +142,7 @@ async def test_roles_set_link_plural_command_alias():
     mock_role.id = 887766
     mock_role.is_managed = False
 
-    cmd = getattr(RolesSetLink, "metadata").owner()
+    cmd = RolesSetLink.metadata.owner()
     cmd.rol = mock_role
 
     plugin._client = MagicMock()
@@ -158,11 +160,11 @@ async def test_roles_set_link_plural_command_alias():
 
 @pytest.mark.asyncio
 async def test_unlink_account_permissions():
-    from src.plugins.account import UnlinkAccount, plugin
     from src.hooks import admin_only
+    from src.plugins.account import UnlinkAccount, plugin
 
-    cmd_cls = getattr(UnlinkAccount, "metadata").owner
-    hooks = getattr(UnlinkAccount, "metadata").hooks
+    cmd_cls = UnlinkAccount.metadata.owner
+    hooks = UnlinkAccount.metadata.hooks
     assert admin_only in hooks, "UnlinkAccount must have admin_only hook"
 
     # 1. Admin unlinking someone else -> success
@@ -206,7 +208,7 @@ async def test_unlink_account_permissions():
 async def test_player_link_without_params(monkeypatch):
     from src.plugins.account import LinkAccount, plugin
 
-    cmd_cls = getattr(LinkAccount, "metadata").owner
+    cmd_cls = LinkAccount.metadata.owner
     cmd = cmd_cls()
     cmd.steam_id = None
     cmd.usuario = None
@@ -242,9 +244,9 @@ async def test_player_link_without_params(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_player_link_with_params_restricted(monkeypatch):
-    from src.plugins.account import LinkAccount, plugin
+    from src.plugins.account import LinkAccount
 
-    cmd_cls = getattr(LinkAccount, "metadata").owner
+    cmd_cls = LinkAccount.metadata.owner
     cmd = cmd_cls()
     cmd.steam_id = "76561198000000001"
     cmd.usuario = None
@@ -268,7 +270,7 @@ async def test_player_link_with_params_restricted(monkeypatch):
 async def test_player_link_with_params_admin_triggers_sync(monkeypatch):
     from src.plugins.account import LinkAccount, plugin
 
-    cmd_cls = getattr(LinkAccount, "metadata").owner
+    cmd_cls = LinkAccount.metadata.owner
     cmd = cmd_cls()
     cmd.steam_id = "76561198000000001"
     target_user = MagicMock()
@@ -301,7 +303,7 @@ async def test_player_link_with_params_admin_triggers_sync(monkeypatch):
 async def test_player_link_channel_admin(monkeypatch):
     from src.plugins.account import LinkChannel, plugin
 
-    cmd_cls = getattr(LinkChannel, "metadata").owner
+    cmd_cls = LinkChannel.metadata.owner
     cmd = cmd_cls()
     cmd.canal = None
 
@@ -335,7 +337,7 @@ async def test_player_link_channel_admin(monkeypatch):
 async def test_player_link_channel_updates_pinned_panel_in_place(monkeypatch):
     from src.plugins.account import LinkChannel, plugin
 
-    cmd = getattr(LinkChannel, "metadata").owner()
+    cmd = LinkChannel.metadata.owner()
     cmd.canal = None
     ctx = MagicMock()
     ctx.channel_id = 444555666
@@ -362,21 +364,23 @@ async def test_player_link_channel_updates_pinned_panel_in_place(monkeypatch):
 async def test_player_profile_admin_vs_player(monkeypatch):
     from src.plugins.account import Profile, plugin
 
-    cmd_cls = getattr(Profile, "metadata").owner
+    cmd_cls = Profile.metadata.owner
     
     player_data = {
         "steam_id": "76561198058686447",
         "in_game_name": "Fr4nc0",
         "discord_id": "111222333",
-        "active_role": "VIP",
-        "special_roles": ["Fundador"],
+        "role": "VIP",
+        "roles": ["Fundador"],
         "observations": "Notas privadas de staff",
         "active_memberships": [{"type": "VIP_COMUN", "end_time": "2026-11-10T03:00:00+00:00"}]
     }
 
     plugin._client = MagicMock()
-    plugin._client.model.api.get_player_by_discord = AsyncMock(return_value={"steam_id": "76561198058686447"})
-    plugin._client.model.api.get_player_by_steam = AsyncMock(return_value=player_data)
+    plugin._client.model.api.get_player_by_discord = AsyncMock(return_value=schemas.PlayerResponse(steam_id="76561198058686447", in_game_name="Player", roles=[], created_at="2026-10-06T00:00:00Z", updated_at="2026-10-06T00:00:00Z"))
+    player_data["created_at"] = "2026-10-06T00:00:00Z"
+    player_data["updated_at"] = "2026-10-06T00:00:00Z"
+    plugin._client.model.api.get_player_by_steam = AsyncMock(return_value=schemas.PlayerResponse.model_validate(player_data))
     plugin._client.model.api.get_player_historical_stats = AsyncMock(return_value={
         "matches_played": 10, "total_kills": 20, "total_deaths": 5, "total_cash": 1000
     })
@@ -424,7 +428,7 @@ async def test_player_profile_admin_vs_player(monkeypatch):
 async def test_membership_sync_command(monkeypatch):
     from src.plugins.memberships import ForceSyncMemberships, plugin
     
-    cmd_cls = getattr(ForceSyncMemberships, "metadata").owner
+    cmd_cls = ForceSyncMemberships.metadata.owner
     cmd = cmd_cls()
     
     ctx = MagicMock()
@@ -466,39 +470,41 @@ async def test_membership_sync_command(monkeypatch):
 @pytest.mark.asyncio
 async def test_rewards_plugin_commands():
     from src.plugins.rewards import (
+        RewardsAddItem,
         RewardsBalance,
         RewardsCatalog,
         RewardsClaim,
-        RewardsSetThreshold,
-        RewardsSetRate,
-        RewardsVerifyClaim,
         RewardsDeliverClaim,
-        RewardsRefundClaim,
         RewardsGivePoints,
-        RewardsAddItem,
+        RewardsRefundClaim,
+        RewardsSetRate,
+        RewardsSetThreshold,
+        RewardsVerifyClaim,
+    )
+    from src.plugins.rewards import (
         plugin as rewards_plugin,
     )
 
     mock_api = MagicMock()
-    mock_api.get_player_rewards_balance = AsyncMock(return_value={
-        "steam_id": "76561198000000001",
-        "discord_id": "123456",
-        "in_game_name": "ProGamer",
-        "reward_points": 75,
-        "total_seeding_minutes": 150,
-        "claims": [{"reward_name": "Key Game", "claim_code": "MF-AAAA-BBBB", "status": "PENDING"}]
-    })
-    mock_api.get_rewards_catalog = AsyncMock(return_value=[
-        {"code": "VIP_MONTH", "name": "VIP 30d", "cost_points": 60, "delivery_type": "AUTOMATIC", "description": "Acceso VIP"},
-        {"code": "STEAM_KEY", "name": "Key Game", "cost_points": 100, "delivery_type": "MANUAL_TICKET", "description": "Ticket key"}
-    ])
-    mock_api.claim_reward = AsyncMock(return_value={
-        "claim_code": "MF-1111-2222",
-        "reward_name": "VIP 30d",
-        "cost_points": 60,
-        "remaining_points": 15,
-        "delivery": {"delivery_type": "AUTOMATIC"}
-    })
+    mock_api.get_player_rewards_balance = AsyncMock(return_value=schemas.PlayerRewardBalanceResponse(
+        steam_id="76561198000000001",
+        discord_id="123456",
+        in_game_name="ProGamer",
+        reward_points=75,
+        total_seeding_minutes=150,
+        active_claims=[schemas.RewardClaimResponse(id=1, steam_id="76561198000000001", reward_name="Key Game", claim_code="MF-AAAA-BBBB", status="PENDING", reward_code="STEAM_KEY", points_spent=100, claimed_at="2026-10-06T00:00:00Z")]
+    ))
+    mock_api.get_rewards_catalog = AsyncMock(return_value=[ schemas.RewardItemResponse(id=1, code="VIP_MONTH", name="VIP 30d", cost_points=60, delivery_type="AUTOMATIC", description="Acceso VIP", reward_type="VIP", reward_value="1", is_active=True), schemas.RewardItemResponse(id=2, code="STEAM_KEY", name="Key Game", cost_points=100, delivery_type="MANUAL_TICKET", description="Ticket key", reward_type="KEY", reward_value="key", is_active=True) ])
+    mock_api.claim_reward = AsyncMock(return_value=schemas.RewardClaimResultResponse(
+        ok=True,
+        claim_code="MF-1111-2222",
+        reward_name="VIP 30d",
+        cost_points=60,
+        remaining_points=15,
+        delivery=schemas.RewardClaimDeliveryInfo(delivery_type="AUTOMATIC"),
+        status="PENDING",
+        reward_code="VIP_MONTH"
+    ))
     mock_api.set_bot_config = AsyncMock(return_value={"ok": True})
     mock_api.verify_reward_claim = AsyncMock(return_value={
         "claim_code": "MF-1111-2222",
@@ -524,7 +530,7 @@ async def test_rewards_plugin_commands():
     ctx.user = MagicMock(id=123456, mention="<@123456>")
 
     # 1. Test /rewards balance
-    bal_cmd = getattr(RewardsBalance, "metadata").owner()
+    bal_cmd = RewardsBalance.metadata.owner()
     bal_cmd.usuario = None
     await bal_cmd.callback(ctx)
     mock_api.get_player_rewards_balance.assert_awaited_with("123456")
@@ -532,7 +538,7 @@ async def test_rewards_plugin_commands():
     assert "Centro de Recompensas" in embed.title
 
     # 2. Test /rewards catalog
-    cat_cmd = getattr(RewardsCatalog, "metadata").owner()
+    cat_cmd = RewardsCatalog.metadata.owner()
     ctx.reset_mock()
     await cat_cmd.callback(ctx)
     mock_api.get_rewards_catalog.assert_awaited_with(only_active=True)
@@ -540,7 +546,7 @@ async def test_rewards_plugin_commands():
     assert "Catálogo de Recompensas" in embed.title
 
     # 3. Test /rewards claim
-    claim_cmd = getattr(RewardsClaim, "metadata").owner()
+    claim_cmd = RewardsClaim.metadata.owner()
     claim_cmd.recompensa = "VIP_MONTH"
     ctx.reset_mock()
     await claim_cmd.callback(ctx)
@@ -549,28 +555,28 @@ async def test_rewards_plugin_commands():
     assert "Canje Exitoso" in embed.title
 
     # 4. Test /rewards admin set_threshold
-    thresh_cmd = getattr(RewardsSetThreshold, "metadata").owner()
+    thresh_cmd = RewardsSetThreshold.metadata.owner()
     thresh_cmd.limite = 25
     ctx.reset_mock()
     await thresh_cmd.callback(ctx)
     mock_api.set_bot_config.assert_awaited_with("SEEDING_MIN_PLAYERS", "25")
 
     # 5. Test /rewards admin set_rate
-    rate_cmd = getattr(RewardsSetRate, "metadata").owner()
+    rate_cmd = RewardsSetRate.metadata.owner()
     rate_cmd.minutos = 45
     ctx.reset_mock()
     await rate_cmd.callback(ctx)
     mock_api.set_bot_config.assert_awaited_with("SEEDING_MINUTES_PER_POINT", "45")
 
     # 6. Test /rewards admin verify
-    verify_cmd = getattr(RewardsVerifyClaim, "metadata").owner()
+    verify_cmd = RewardsVerifyClaim.metadata.owner()
     verify_cmd.codigo_canje = "MF-1111-2222"
     ctx.reset_mock()
     await verify_cmd.callback(ctx)
     mock_api.verify_reward_claim.assert_awaited_with("MF-1111-2222")
 
     # 7. Test /rewards admin deliver
-    deliver_cmd = getattr(RewardsDeliverClaim, "metadata").owner()
+    deliver_cmd = RewardsDeliverClaim.metadata.owner()
     deliver_cmd.codigo_canje = "MF-1111-2222"
     deliver_cmd.notas = "Entregado en ticket #12"
     ctx.reset_mock()
@@ -578,7 +584,7 @@ async def test_rewards_plugin_commands():
     mock_api.deliver_reward_claim.assert_awaited_with("MF-1111-2222", delivered_by=str(ctx.user), notes="Entregado en ticket #12")
 
     # 8. Test /rewards admin refund
-    refund_cmd = getattr(RewardsRefundClaim, "metadata").owner()
+    refund_cmd = RewardsRefundClaim.metadata.owner()
     refund_cmd.codigo_canje = "MF-1111-2222"
     refund_cmd.motivo = "Sin stock"
     ctx.reset_mock()
@@ -586,7 +592,7 @@ async def test_rewards_plugin_commands():
     mock_api.refund_reward_claim.assert_awaited_with("MF-1111-2222", refunded_by=str(ctx.user), reason="Sin stock")
 
     # 9. Test /rewards admin give_points
-    give_cmd = getattr(RewardsGivePoints, "metadata").owner()
+    give_cmd = RewardsGivePoints.metadata.owner()
     give_cmd.usuario = None
     give_cmd.steam_id = "76561198000000001"
     give_cmd.puntos = 50
@@ -596,7 +602,7 @@ async def test_rewards_plugin_commands():
     mock_api.give_reward_points.assert_awaited_with("76561198000000001", 50, "Evento de navidad")
 
     # 10. Test /rewards admin add_item
-    add_cmd = getattr(RewardsAddItem, "metadata").owner()
+    add_cmd = RewardsAddItem.metadata.owner()
     add_cmd.codigo = "VIP_15D"
     add_cmd.nombre = "VIP 15 Días"
     add_cmd.costo = 30

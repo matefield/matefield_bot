@@ -1,7 +1,9 @@
 import asyncio
+
 from dotenv import dotenv_values
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
+
 
 async def post_migration_prod():
     cfg = dotenv_values(".env.prod")
@@ -38,7 +40,7 @@ async def post_migration_prod():
         """))
         print("\n2. Membership Types:")
         for row in res_mt.fetchall():
-            print(f"   - {row.code} ({row.name}): role_id={row.role_id} [{row.role_name}], base=${row.base_price_usd}, tebex=${row.price_usd}")
+            print(f"   - {row.code} ({row.name}): role_id={row.role_id} [{row.role_name}], base=${row.base_price_usd}, price=${row.price_usd}")
 
         # 3. Admins verification
         print("\n3. Verificación de Administradores en player_roles:")

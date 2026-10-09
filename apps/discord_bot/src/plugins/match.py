@@ -1,7 +1,8 @@
 import crescent
 import hikari
-from src.model import Model
+
 from src.hooks import admin_only
+from src.model import Model
 
 plugin = crescent.Plugin[hikari.GatewayBot, Model]()
 from src.groups import match_group, server_group

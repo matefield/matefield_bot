@@ -1,10 +1,11 @@
+import logging
+
 import crescent
 import hikari
-import logging
-from typing import Optional
 
-from src.model import Model
 from src.groups import rcon_group
+from src.model import Model
+from src.ui_utils import format_api_error
 
 logger = logging.getLogger("wardogs.rcon")
 plugin = crescent.Plugin[hikari.GatewayBot, Model]()
@@ -29,19 +30,19 @@ class RconList:
             )
 
             for s in servers:
-                status_icon = "🟢 Activo" if s.get("is_active") else "🔴 Inactivo"
-                default_badge = " ⭐ (Predeterminado)" if s.get("is_default") else ""
+                status_icon = "🟢 Activo" if s.is_active else "🔴 Inactivo"
+                default_badge = " ⭐ (Predeterminado)" if s.is_default else ""
                 val = (
-                    f"**URL:** `{s.get('scheme', 'http')}://{s.get('ip')}:{s.get('port')}`\n"
+                    f"**URL:** `{s.scheme}://{s.ip}:{s.port}`\n"
                     f"**Estado:** {status_icon}{default_badge}\n"
-                    f"**ID:** `{s.get('id')}`"
+                    f"**ID:** `{s.id}`"
                 )
-                embed.add_field(name=f"🖥️ {s.get('name', 'Sin nombre')}", value=val, inline=False)
+                embed.add_field(name=f"🖥️ {s.name or 'Sin nombre'}", value=val, inline=False)
 
             await ctx.respond(embed=embed)
         except Exception as e:
             logger.exception("Error listando servidores RCON")
-            await ctx.respond(f"❌ Error al obtener los servidores: {e}")
+            await ctx.respond(f"❌ Error al obtener los servidores: {format_api_error(e)}")
 
 
 @plugin.include
@@ -70,20 +71,24 @@ class RconAdd:
                 is_default=bool(self.default)
             )
 
+            server = result.server
+            if not server:
+                await ctx.respond("❌ Servidor registrado, pero no se devolvieron detalles.")
+                return
             embed = hikari.Embed(
                 title="✅ Servidor RCON Registrado",
                 color=0x2ECC71
             )
-            embed.add_field(name="ID", value=f"`{result.get('id')}`", inline=True)
-            embed.add_field(name="Nombre", value=f"**{result.get('name')}**", inline=True)
-            embed.add_field(name="Dirección", value=f"`{result.get('scheme')}://{result.get('ip')}:{result.get('port')}`", inline=False)
-            embed.add_field(name="Activo", value="Sí" if result.get('is_active') else "No", inline=True)
-            embed.add_field(name="Predeterminado", value="Sí ⭐" if result.get('is_default') else "No", inline=True)
+            embed.add_field(name="ID", value=f"`{server.id}`", inline=True)
+            embed.add_field(name="Nombre", value=f"**{server.name}**", inline=True)
+            embed.add_field(name="Dirección", value=f"`{server.scheme}://{server.ip}:{server.port}`", inline=False)
+            embed.add_field(name="Activo", value="Sí" if server.is_active else "No", inline=True)
+            embed.add_field(name="Predeterminado", value="Sí ⭐" if server.is_default else "No", inline=True)
 
             await ctx.respond(embed=embed)
         except Exception as e:
             logger.exception("Error añadiendo servidor RCON")
-            await ctx.respond(f"❌ Error al registrar servidor RCON: {e}")
+            await ctx.respond(f"❌ Error al registrar servidor RCON: {format_api_error(e)}")
 
 
 @plugin.include
@@ -96,31 +101,28 @@ class RconTest:
         await ctx.defer()
         try:
             res = await plugin.model.api.test_rcon_server(int(self.server_id))
-            online = res.get("online", False)
+            online = res.is_online
             color = 0x2ECC71 if online else 0xE74C3C
             status_text = "🟢 ONLINE" if online else "🔴 OFFLINE"
 
             embed = hikari.Embed(
-                title=f"Diagnóstico RCON: {res.get('server_name', 'Servidor')}",
+                title=f"Diagnóstico RCON: {res.server_name or 'Servidor'}",
                 color=color
             )
             embed.add_field(name="ID Servidor", value=f"`{self.server_id}`", inline=True)
             embed.add_field(name="Estado", value=f"**{status_text}**", inline=True)
-            embed.add_field(name="Latencia", value=f"`{res.get('latency_ms', 0)} ms`", inline=True)
+            embed.add_field(name="Latencia", value=f"`{res.latency_ms or 0} ms`", inline=True)
 
             if online:
-                players = res.get("players", {})
-                current_p = players.get("current", 0)
-                max_p = players.get("max", 0)
-                embed.add_field(name="Mapa Actual", value=f"🗺️ `{res.get('map', 'Desconocido')}`", inline=True)
-                embed.add_field(name="Jugadores", value=f"👥 `{current_p}/{max_p}`", inline=True)
+                embed.add_field(name="Mapa Actual", value=f"🗺️ `{res.current_map or 'Desconocido'}`", inline=True)
+                embed.add_field(name="Jugadores", value=f"👥 `{res.player_count or 0}/{res.max_players or 0}`", inline=True)
             else:
-                embed.add_field(name="Detalle de error", value=f"```\n{res.get('error', 'Sin respuesta')}\n```", inline=False)
+                embed.add_field(name="Detalle de error", value=f"```\n{res.error or 'Sin respuesta'}\n```", inline=False)
 
             await ctx.respond(embed=embed)
         except Exception as e:
             logger.exception("Error testeando servidor RCON")
-            await ctx.respond(f"❌ Error al realizar la prueba: {e}")
+            await ctx.respond(f"❌ Error al realizar la prueba: {format_api_error(e)}")
 
 
 @plugin.include
@@ -160,10 +162,13 @@ class RconEdit:
                 return
 
             res = await plugin.model.api.update_rcon_server(self.server_id, **update_payload)
-            await ctx.respond(f"✅ Servidor `{self.server_id}` (**{res.get('name')}**) actualizado correctamente.")
+            if res.server:
+                await ctx.respond(f"✅ Servidor `{self.server_id}` (**{res.server.name}**) actualizado correctamente.")
+            else:
+                await ctx.respond(f"✅ Servidor `{self.server_id}` actualizado correctamente.")
         except Exception as e:
             logger.exception("Error editando servidor RCON")
-            await ctx.respond(f"❌ Error al actualizar servidor: {e}")
+            await ctx.respond(f"❌ Error al actualizar servidor: {format_api_error(e)}")
 
 
 @plugin.include
@@ -179,7 +184,7 @@ class RconRemove:
             await ctx.respond(f"🗑️ Servidor `{self.server_id}` eliminado con éxito.")
         except Exception as e:
             logger.exception("Error eliminando servidor RCON")
-            await ctx.respond(f"❌ Error al eliminar servidor: {e}")
+            await ctx.respond(f"❌ Error al eliminar servidor: {format_api_error(e)}")
 
 
 @plugin.include
@@ -190,7 +195,7 @@ class RconSyncAll:
         await ctx.defer()
         try:
             res = await plugin.model.api.sync_all_rcon_servers()
-            results = res.get("results", [])
+            results = res.results
 
             embed = hikari.Embed(
                 title="🔄 Sincronización Multi-Servidor RCON",
@@ -199,12 +204,12 @@ class RconSyncAll:
             )
 
             for r in results:
-                status_icon = "🟢" if r.get("status") == "SUCCESS" else "🔴"
-                detail = f"**VIPs:** {r.get('vip_slots_synced', 0)} slots | **Bans:** {r.get('bans_synced', 0)}"
-                if r.get("error"):
-                    detail += f"\n*Error:* `{r.get('error')}`"
+                status_icon = "🟢" if r.status == "SUCCESS" else "🔴"
+                detail = f"**VIPs:** {r.vip_slots_synced} slots | **Bans:** {r.bans_synced}"
+                if r.error:
+                    detail += f"\n*Error:* `{r.error}`"
                 embed.add_field(
-                    name=f"{status_icon} {r.get('server_name')} (`{r.get('server_id')}`)",
+                    name=f"{status_icon} {r.server_name} (`{r.server_id}`)",
                     value=detail,
                     inline=False
                 )
@@ -212,4 +217,4 @@ class RconSyncAll:
             await ctx.respond(embed=embed)
         except Exception as e:
             logger.exception("Error sincronizando servidores RCON")
-            await ctx.respond(f"❌ Error durante la sincronización: {e}")
+            await ctx.respond(f"❌ Error durante la sincronización: {format_api_error(e)}")

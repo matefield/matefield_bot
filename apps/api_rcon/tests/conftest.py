@@ -15,20 +15,20 @@ except ImportError:
 
 import pytest
 import pytest_asyncio
-from httpx import AsyncClient, ASGITransport
-from sqlmodel import SQLModel
-from sqlmodel.ext.asyncio.session import AsyncSession
+from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.pool import StaticPool
+from sqlmodel import SQLModel
+from sqlmodel.ext.asyncio.session import AsyncSession
 
 # Ensure we import the FastAPI app from api_rcon
 if "src.main" in sys.modules and not hasattr(sys.modules["src.main"], "app"):
     del sys.modules["src.main"]
 
-from src.main import app
-from src.connections.databases.db import get_session
-from src.security.guard import verify_api_key_guard
 from src.connections.apis.rcon import RCONManager
+from src.connections.databases.db import get_session
+from src.main import app
+from src.security.guard import verify_api_key_guard
 
 TEST_SQLITE_URL = "sqlite+aiosqlite:///:memory:"
 

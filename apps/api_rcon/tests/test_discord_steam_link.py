@@ -1,5 +1,6 @@
 import pytest
 
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize("path", ["", "/callback", "/cambiar-cuenta"])
 async def test_old_oauth_entries_do_not_authenticate_browser(client, path):

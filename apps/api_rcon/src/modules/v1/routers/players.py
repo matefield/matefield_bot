@@ -1,15 +1,16 @@
-from typing import Any, Dict, Optional
 from fastapi import APIRouter, Depends
 from sqlmodel.ext.asyncio.session import AsyncSession
 from wardogs_schemas import v1 as schemas
 
-from src.security.guard import verify_api_key_guard
-from src.connections.databases.db import get_session
 from src.connections.apis.steam import get_player_summary
+from src.connections.databases.db import get_session
 from src.modules.v1.schemas.dtos import (
-    LinkAccountRequest, UnlinkAccountRequest, EditPlayerRequest
+    EditPlayerRequest,
+    LinkAccountRequest,
+    UnlinkAccountRequest,
 )
 from src.modules.v1.services.players_service import PlayersService
+from src.security.guard import verify_api_key_guard
 
 router = APIRouter(tags=["Players"])
 
