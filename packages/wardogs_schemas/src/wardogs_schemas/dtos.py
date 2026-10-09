@@ -1,6 +1,22 @@
 from __future__ import annotations
-from typing import Optional, List, Any, Dict
-from pydantic import BaseModel, Field
+from typing import Optional, List, Any, Dict, Literal, Annotated
+from datetime import datetime
+from pydantic import AfterValidator, BaseModel, Field, StringConstraints, model_serializer, model_validator
+
+
+def _valid_snowflake(value: str) -> str:
+    if int(value) >= 2 ** 64:
+        raise ValueError("Discord IDs must fit an unsigned 64-bit integer")
+    return value
+
+
+DiscordSnowflake = Annotated[
+    str, Field(strict=True, min_length=1, max_length=20, pattern=r"^[1-9][0-9]*$"),
+    AfterValidator(_valid_snowflake),
+]
+
+
+DatabaseId = Annotated[int, Field(ge=1, le=2 ** 31 - 1)]
 
 
 # ---------------------------------------------------------
@@ -32,11 +48,74 @@ class AddMembershipRequest(BaseModel):
     membership_type: str
     days: Optional[int] = None
     special_role: Optional[str] = None
-    special_role_id: Optional[int] = None
-    role_granted_id: Optional[int] = None
+    special_role_id: Optional[DatabaseId] = None
+    role_granted_id: Optional[DatabaseId] = None
     is_booster: Optional[bool] = False
     server_id: Optional[int] = None
     payment_source: Optional[str] = "MANUAL"
+    guild_id: Optional[DiscordSnowflake] = None
+    source: Optional[Literal["DISCORD"]] = None
+    operation_id: Optional[str] = Field(default=None, min_length=1, max_length=100)
+
+    @model_validator(mode="after")
+    def require_discord_operation(self):
+        if self.source == "DISCORD" and not self.operation_id:
+            raise ValueError("operation_id is required for Discord membership creation")
+        return self
+
+
+class CreatedMembershipItem(BaseModel):
+    id: int
+    steam_id: str
+    type: str
+    start_date: datetime
+    end_date: Optional[datetime] = None
+    is_booster: bool
+    server_id: Optional[int] = None
+
+
+class MembershipDiscordDelivery(BaseModel):
+    user_id: str
+    role_ids: List[str]
+    guild_id: Optional[DiscordSnowflake] = None
+
+    @model_serializer(mode="wrap")
+    def omit_legacy_guild(self, handler):
+        result = handler(self)
+        if self.guild_id is None:
+            result.pop("guild_id", None)
+        return result
+
+
+class ConfigureMembershipRoleRequest(BaseModel):
+    discord_role_id: DiscordSnowflake
+    actor_id: DiscordSnowflake
+
+
+class MembershipRoleConfiguration(BaseModel):
+    guild_id: DiscordSnowflake
+    membership_type: str
+    membership_type_name: str
+    role_id: int
+    discord_role_id: DiscordSnowflake
+    configured_by: DiscordSnowflake
+    changed: bool = False
+
+
+class MembershipWarconDelivery(BaseModel):
+    status: Literal["SUCCESS", "FAILED"]
+    server_id: str
+    entry_id: Optional[str] = None
+    error: Optional[str] = None
+
+
+class AddMembershipResponse(BaseModel):
+    ok: bool
+    message: str
+    membership: Optional[CreatedMembershipItem] = None
+    discord: Optional[MembershipDiscordDelivery] = None
+    warcon: Optional[MembershipWarconDelivery] = None
+    replayed: bool = False
 
 
 class EditMembershipRequest(BaseModel):
@@ -45,7 +124,7 @@ class EditMembershipRequest(BaseModel):
     membership_type: Optional[str] = None
     is_active: Optional[bool] = None
     is_booster: Optional[bool] = None
-    server_id: Optional[int] = None
+    server_id: Optional[DatabaseId] = None
 
 
 class CompensateRequest(BaseModel):
@@ -58,7 +137,7 @@ class SetBotConfigRequest(BaseModel):
 
 
 class QuotaUpdateRequest(BaseModel):
-    max_quota: Optional[int]
+    max_quota: Optional[int] = Field(ge=0, le=2 ** 31 - 1)
 
 
 class RoleRegisterRequest(BaseModel):
@@ -90,29 +169,31 @@ class UpdateRconServerRequest(BaseModel):
 
 
 class CreateMembershipTypeRequest(BaseModel):
-    code: str
-    name: str
+    code: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=100)]
+    name: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=255)]
     description: Optional[str] = None
-    price_usd: float = 0.0          # Precio
+    price_usd: float = Field(default=0.0, ge=0, le=21474836.47, allow_inf_nan=False)  # USD units
+    price_ars: Optional[float] = Field(default=None, ge=0, le=21474836.47, allow_inf_nan=False)  # ARS units
     billing_type: str = "ONE_TIME"  # "ONE_TIME" or "RECURRING"
-    default_days: int = 30          # 0 = permanente
-    max_quota: Optional[int] = None # None = ilimitado
+    default_days: int = Field(default=30, ge=0, le=2147483647)  # 0 = permanente
+    max_quota: Optional[int] = Field(default=None, ge=0, le=2147483647) # None = ilimitado
     discord_role_id: Optional[str] = None
-    role_id: Optional[int] = None
-    server_id: Optional[int] = None
+    role_id: Optional[DatabaseId] = None
+    server_id: Optional[DatabaseId] = None
     is_active: bool = True
 
 
 class UpdateMembershipTypeRequest(BaseModel):
-    name: Optional[str] = None
+    name: Optional[Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=255)]] = None
     description: Optional[str] = None
-    price_usd: Optional[float] = None
+    price_usd: Optional[float] = Field(default=None, ge=0, le=21474836.47, allow_inf_nan=False)
+    price_ars: Optional[float] = Field(default=None, ge=0, le=21474836.47, allow_inf_nan=False)
     billing_type: Optional[str] = None
-    default_days: Optional[int] = None
-    max_quota: Optional[int] = None
+    default_days: Optional[int] = Field(default=None, ge=0, le=2147483647)
+    max_quota: Optional[int] = Field(default=None, ge=0, le=2147483647)
     discord_role_id: Optional[str] = None
-    role_id: Optional[int] = None
-    server_id: Optional[int] = None
+    role_id: Optional[DatabaseId] = None
+    server_id: Optional[DatabaseId] = None
     is_active: Optional[bool] = None
 
 
@@ -126,6 +207,7 @@ class MembershipTypeItem(BaseModel):
     name: str
     description: Optional[str] = None
     price_usd: float = 0.0
+    price_ars: Optional[float] = None
     billing_type: str = "ONE_TIME"
     default_days: int = 30
     max_quota: Optional[int] = None

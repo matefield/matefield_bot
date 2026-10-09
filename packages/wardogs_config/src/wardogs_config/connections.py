@@ -25,6 +25,11 @@ class ConnectionSettings(BaseAppConfig):
         description="Password for the game server RCON API",
     )
 
+    WARCON_URL: str = pydantic.Field(default="", validation_alias="WARCON_URL")
+    WARCON_API_TOKEN: str = pydantic.Field(default="", validation_alias="WARCON_API_TOKEN", repr=False)
+    WARCON_ORG_ID: str = pydantic.Field(default="", validation_alias="WARCON_ORG_ID")
+    WARCON_SERVER_ID: str = pydantic.Field(default="", validation_alias="WARCON_SERVER_ID")
+
     PUBLIC_API_URL: str = pydantic.Field(
         default="",
         validation_alias="PUBLIC_API_URL",

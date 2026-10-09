@@ -3,13 +3,16 @@ import pytest
 from httpx import AsyncClient
 from sqlmodel.ext.asyncio.session import AsyncSession
 from wardogs_schemas import v1 as schemas
+from wardogs_config import ENVIRONMENT_SETTINGS
 
 import src.connections.apis.rcon as rcon_module
 from src.connections.databases.db import Player, Membership, BotConfig, Role
 
 
 @pytest.fixture(autouse=True)
-def mock_rcon(mocker):
+def mock_rcon(mocker, monkeypatch):
+    # These tests exercise legacy direct RCON independently of the developer env.
+    monkeypatch.setattr(ENVIRONMENT_SETTINGS.CONNECTIONS_SETTINGS, "WARCON_URL", "")
     # Mock the default RCON client used in endpoints
     mocker.patch.object(rcon_module.rcon_client, 'get_reserved_slots', return_value=schemas.ReservedSlots(reservedSlots=[]))
     mocker.patch.object(rcon_module.rcon_client, 'sync_reserved_slots', return_value=None)

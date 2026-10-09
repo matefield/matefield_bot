@@ -10,7 +10,7 @@ module so that routers and services have a single import point for DB access.
 from typing import Optional, List
 from sqlmodel import Field, SQLModel, Relationship
 from sqlmodel.ext.asyncio.session import AsyncSession
-from sqlalchemy import Column, DateTime, BigInteger, ForeignKey, Text, CheckConstraint
+from sqlalchemy import Column, DateTime, BigInteger, ForeignKey, Text, CheckConstraint, UniqueConstraint
 from sqlalchemy.ext.asyncio import create_async_engine
 from datetime import datetime, timezone
 from enum import Enum
@@ -44,6 +44,22 @@ class Role(SQLModel, table=True):
     
     # Relationships
     players: List["Player"] = Relationship(back_populates="roles", link_model=PlayerRole)
+
+
+class RoleDiscordBinding(SQLModel, table=True):
+    """A logical role's Discord representation in one explicitly enabled guild."""
+    __tablename__ = "role_discord_bindings"
+    id: Optional[int] = Field(default=None, primary_key=True)
+    role_id: int = Field(foreign_key="roles.id", index=True)
+    guild_id: str = Field(max_length=20, index=True)
+    discord_role_id: str = Field(max_length=20)
+    configured_by: str = Field(max_length=20)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), sa_column=Column(DateTime(timezone=True), nullable=False))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), sa_column=Column(DateTime(timezone=True), nullable=False))
+
+    __table_args__ = (
+        UniqueConstraint("guild_id", "role_id", name="uq_role_discord_binding_guild_role"),
+    )
 
 
 class Player(SQLModel, table=True):
@@ -80,6 +96,8 @@ class Membership(SQLModel, table=True):
     rcon_sync_status: str = Field(default="PENDING", sa_column_kwargs={"server_default": "PENDING"}) # PENDING, SUCCESS, FAILED
     server_id: Optional[int] = Field(default=None, foreign_key="rcon_servers.id")
     payment_source: str = Field(default="MANUAL", sa_column_kwargs={"server_default": "MANUAL"}) # MANUAL, REWARDS
+    creation_operation_id: Optional[str] = Field(default=None, unique=True, index=True, max_length=100)
+    creation_request_hash: Optional[str] = Field(default=None, max_length=64)
     # Relationships
     player: Player = Relationship(back_populates="memberships")
     role_granted: Optional[Role] = Relationship(sa_relationship_kwargs={"foreign_keys": "[Membership.role_granted_id]"})
@@ -162,6 +180,7 @@ class MembershipType(SQLModel, table=True):
     name: str
     description: Optional[str] = Field(default=None)
     price_usd: int = Field(default=0) # Stored in cents
+    price_ars: Optional[int] = Field(default=None) # Stored in cents; None = not configured
     billing_type: str = Field(default="ONE_TIME") # "ONE_TIME" or "RECURRING"
     default_days: int = Field(default=30)         # 0 = permanente
     max_quota: Optional[int] = Field(default=None)# None = ilimitado

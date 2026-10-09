@@ -11,6 +11,7 @@ from src.modules.v1.routers import (
     config_router,
     rcon_servers_router,
     membership_types_router,
+    membership_roles_router,
     auth_router,
     rewards_router,
 )
@@ -26,6 +27,7 @@ router.include_router(matches_router)
 router.include_router(config_router)
 router.include_router(rcon_servers_router)
 router.include_router(membership_types_router)
+router.include_router(membership_roles_router)
 router.include_router(auth_router)
 router.include_router(rewards_router)
 

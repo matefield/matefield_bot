@@ -1,12 +1,18 @@
 import logging
+import hashlib
+import json
 from datetime import datetime, timezone, timedelta
 from typing import Any, Dict, List, Optional
 from fastapi import HTTPException
 from sqlmodel import select, func, col, or_
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from src.connections.databases.db import Player, Membership, Role, PlayerRole, BotConfig, MembershipType
+from src.connections.databases.db import Player, Membership, Role, PlayerRole, BotConfig, MembershipType, RoleDiscordBinding, RconServer
+from src.modules.v1.services.membership_roles_service import MembershipRolesService
 from src.connections.apis.rcon import RCONManager
+from src.connections.apis.warcon import WarconClient
+from wardogs_config import ENVIRONMENT_SETTINGS
+from wardogs_schemas.dtos import CreatedMembershipItem, MembershipDiscordDelivery, AddMembershipResponse
 from src.modules.v1.schemas.dtos import AddMembershipRequest, EditMembershipRequest, CompensateRequest
 
 logger = logging.getLogger("wardogs.memberships")
@@ -14,12 +20,59 @@ logger = logging.getLogger("wardogs.memberships")
 class MembershipsService:
     @staticmethod
     async def add_membership(req: AddMembershipRequest, session: AsyncSession) -> Dict[str, Any]:
+        if req.source == "DISCORD" and req.guild_id:
+            MembershipRolesService.require_enabled_guild(req.guild_id)
         player = (await session.exec(select(Player).where(Player.steam_id == req.steam_id).with_for_update())).first()
         if not player:
             raise HTTPException(status_code=404, detail="Player not found")
+
+        discord_source = req.source == "DISCORD"
+        # Preserve hashes of pre-guild requests while binding new operations to their guild.
+        excluded = {"operation_id"} if req.guild_id else {"operation_id", "guild_id"}
+        request_hash = hashlib.sha256(json.dumps(req.model_dump(exclude=excluded), sort_keys=True).encode()).hexdigest()
+        if discord_source:
+            previous = (await session.exec(select(Membership).where(
+                Membership.creation_operation_id == req.operation_id
+            ))).first()
+            if previous:
+                if previous.creation_request_hash != request_hash:
+                    raise HTTPException(status_code=409, detail="Esta operación ya se utilizó con otros datos.")
+                return await MembershipsService._deliver_discord_membership(previous, player, session, replayed=True, guild_id=req.guild_id)
         
         norm_type = req.membership_type.strip().upper()
-        m_type = (await session.exec(select(MembershipType).where(func.upper(MembershipType.code) == norm_type))).first()
+        # Different players compete for the same quota. Serialize that count and
+        # insertion on the type row, in addition to the per-player renewal lock.
+        m_type = (await session.exec(select(MembershipType).where(
+            func.upper(MembershipType.code) == norm_type
+        ).with_for_update().execution_options(populate_existing=True))).first()
+        if discord_source:
+            WarconClient().validate_configuration()
+            if req.server_id is not None or (m_type and m_type.server_id is not None):
+                raise HTTPException(status_code=400, detail="Las altas desde Discord usan el servidor global configurado en Warcon; todavía no admiten un servidor específico.")
+            if not m_type or not m_type.is_active:
+                raise HTTPException(status_code=400, detail="Seleccioná un tipo de membresía activo registrado en nuestro sistema.")
+            if not MembershipsService._valid_discord_id(player.discord_id):
+                raise HTTPException(status_code=400, detail="El jugador no tiene una cuenta de Discord válida vinculada.")
+            role = (await session.exec(select(Role).where(Role.id == m_type.role_id))).first() if m_type.role_id else None
+            if not role:
+                raise HTTPException(status_code=400, detail="El tipo de membresía no tiene un rol lógico configurado.")
+            if req.guild_id:
+                await MembershipRolesService.resolve_roles(req.guild_id, [role.id], session, lock=False)
+            elif not MembershipsService._valid_discord_id(role.discord_role_id):
+                raise HTTPException(status_code=400, detail="El tipo de membresía no tiene un rol de Discord configurado.")
+            if req.role_granted_id is not None and req.role_granted_id != role.id:
+                raise HTTPException(status_code=400, detail="El rol de membresía debe corresponder al tipo seleccionado.")
+        else:
+            # Legacy callers may specify logical IDs directly. Validate them before
+            # changing a renewal, instead of letting FK failures escape as HTTP 500.
+            for role_id in (req.role_granted_id, req.special_role_id):
+                if role_id is not None and await session.get(Role, role_id) is None:
+                    raise HTTPException(status_code=404, detail="Rol no encontrado.")
+            if req.server_id is not None:
+                if not 0 < req.server_id < 2 ** 31:
+                    raise HTTPException(status_code=400, detail="El ID de servidor RCON está fuera del rango admitido.")
+                if await session.get(RconServer, req.server_id) is None:
+                    raise HTTPException(status_code=404, detail="Servidor RCON no encontrado.")
 
         if req.days is None:
             if m_type is not None:
@@ -27,17 +80,26 @@ class MembershipsService:
             else:
                 config_key = f"ROLE_DAYS_{norm_type}"
                 config_days = (await session.exec(select(BotConfig).where(BotConfig.config_key == config_key))).first()
-                days_to_add = int(config_days.config_value) if config_days else 30
+                try:
+                    days_to_add = int(config_days.config_value) if config_days else 30
+                except ValueError:
+                    raise HTTPException(status_code=400, detail="La configuración de días de esta membresía no es válida.") from None
         else:
             if req.days < 0:
                 raise HTTPException(status_code=400, detail="Los días de membresía deben ser 0 (permanente) o un número positivo.")
             days_to_add = req.days
+        if discord_source and not 0 <= days_to_add <= 3652:
+            raise HTTPException(status_code=400, detail="Warcon admite una vigencia de hasta diez años, o 0 días para una membresía permanente.")
 
         # Check quota if it's a new membership or one that's inactive
         max_quota = m_type.max_quota if m_type else None
 
+        quota_now = datetime.now(timezone.utc)
         if max_quota is not None:
-            usage_stmt = select(func.count(col(Membership.id))).where(func.upper(Membership.membership_type) == norm_type, Membership.is_active == True)
+            usage_stmt = select(func.count(col(Membership.id))).where(
+                func.upper(Membership.membership_type) == norm_type, Membership.is_active == True,
+                or_(Membership.end_time == None, Membership.end_time > quota_now),
+            )
             current_usage = (await session.exec(usage_stmt)).one()
             
             # If player already has this membership active, it doesn't count as a new slot
@@ -45,7 +107,8 @@ class MembershipsService:
                 select(Membership).where(
                     Membership.steam_id == req.steam_id,
                     func.upper(Membership.membership_type) == norm_type,
-                    Membership.is_active == True
+                    Membership.is_active == True,
+                    or_(Membership.end_time == None, Membership.end_time > quota_now),
                 )
             )).first()
             
@@ -56,7 +119,7 @@ class MembershipsService:
         server_id = req.server_id if req.server_id is not None else (m_type.server_id if m_type else None)
 
         start_date = datetime.now(timezone.utc)
-        end_date = start_date + timedelta(days=days_to_add) if days_to_add > 0 else None
+        end_date = MembershipsService._add_days(start_date, days_to_add) if days_to_add > 0 else None
 
         # Check for existing active membership
         existing_membership = (await session.exec(
@@ -74,14 +137,27 @@ class MembershipsService:
                     m_end = m_end.replace(tzinfo=timezone.utc)
                 if m_end > start_date:
                     # Still active, accumulate remaining time to the new membership
-                    remaining_time = m_end - start_date
-                    end_date = start_date + remaining_time + timedelta(days=days_to_add) if days_to_add > 0 else None
+                    end_date = MembershipsService._add_days(m_end, days_to_add) if days_to_add > 0 else None
+            elif discord_source:
+                # Renewing a permanent membership must not shorten its existing benefit.
+                end_date = None
                     
-            # Expire the old membership to keep history intact
-            await MembershipsService._deactivate_membership(existing_membership, session)
-            existing_membership.end_time = start_date # Mark it as ended now
-            session.add(existing_membership)
-        
+        if discord_source and end_date and end_date > start_date + timedelta(days=3652.5):
+            raise HTTPException(status_code=400, detail="La vigencia acumulada supera el límite de diez años de Warcon.")
+        if discord_source:
+            other_active = select(Membership.end_time).where(
+                Membership.steam_id == req.steam_id, Membership.is_active == True,
+                Membership.server_id == None,
+                or_(Membership.end_time == None, Membership.end_time > start_date),
+            )
+            if existing_membership:
+                other_active = other_active.where(Membership.id != existing_membership.id)
+            effective_expiry = MembershipsService._effective_slot_expiry([
+                end_date, *(await session.exec(other_active)).all(),
+            ])
+            if effective_expiry and effective_expiry > start_date + timedelta(days=3652.5):
+                raise HTTPException(status_code=400, detail="La vigencia del slot reservado supera el límite de diez años de Warcon.")
+
         # Resolve VIP role from m_type or direct req.role_granted_id
         vip_role_id = req.role_granted_id or (m_type.role_id if m_type else None)
         if not vip_role_id:
@@ -91,9 +167,18 @@ class MembershipsService:
 
         # Determine attached special role
         attached_special_role_id = req.special_role_id
+        if discord_source and req.guild_id and req.special_role and not attached_special_role_id:
+            # Discord sends a selected role ID. Its guild binding is the only authority.
+            special_binding = (await session.exec(select(RoleDiscordBinding).where(
+                RoleDiscordBinding.guild_id == req.guild_id,
+                RoleDiscordBinding.discord_role_id == req.special_role,
+            ))).first()
+            if not special_binding:
+                raise HTTPException(status_code=409, detail="El rol especial seleccionado no está configurado en este servidor de Discord.")
+            attached_special_role_id = special_binding.role_id
         if not attached_special_role_id and req.special_role:
             role_identifier = req.special_role.strip()
-            if role_identifier.isdigit() and len(role_identifier) < 10:
+            if role_identifier.isascii() and role_identifier.isdigit() and len(role_identifier) < 10:
                 sr_obj = await session.get(Role, int(role_identifier))
                 if sr_obj:
                     attached_special_role_id = sr_obj.id
@@ -125,9 +210,23 @@ class MembershipsService:
         elif not attached_special_role_id and existing_membership and existing_membership.special_role_id:
             attached_special_role_id = existing_membership.special_role_id
 
+        if discord_source and attached_special_role_id:
+            special = await session.get(Role, attached_special_role_id)
+            if not special or (not req.guild_id and not MembershipsService._valid_discord_id(special.discord_role_id)):
+                raise HTTPException(status_code=400, detail="El rol especial no tiene un rol de Discord válido configurado.")
+        if discord_source and req.guild_id:
+            await MembershipRolesService.resolve_roles(
+                req.guild_id, [role_id for role_id in (vip_role_id, attached_special_role_id) if role_id], session
+            )
+        if existing_membership:
+            # Validate the guild's complete delivery before changing existing benefits.
+            await MembershipsService._deactivate_membership(existing_membership, session)
+            existing_membership.end_time = start_date
+            session.add(existing_membership)
+
         membership = Membership(
             steam_id=req.steam_id,
-            membership_type=req.membership_type,
+            membership_type=m_type.code if discord_source else req.membership_type,
             start_time=start_date,
             end_time=end_date,
             is_active=True,
@@ -135,7 +234,9 @@ class MembershipsService:
             role_granted_id=vip_role_id,
             special_role_id=attached_special_role_id,
             server_id=server_id,
-            payment_source=req.payment_source or "MANUAL"
+            payment_source=req.payment_source or "MANUAL",
+            creation_operation_id=req.operation_id if discord_source else None,
+            creation_request_hash=request_hash if discord_source else None,
         )
         
         # Link VIP role to player_roles
@@ -158,7 +259,94 @@ class MembershipsService:
                 
         session.add(membership)
         await session.commit()
+        if discord_source:
+            await session.refresh(membership)
+            return await MembershipsService._deliver_discord_membership(membership, player, session, guild_id=req.guild_id)
         return {"ok": True, "message": "Membership added"}
+
+    @staticmethod
+    def _add_days(base: datetime, days: int) -> datetime:
+        """Keep date overflow a validation error, before changing saved benefits."""
+        try:
+            return base + timedelta(days=days)
+        except OverflowError:
+            raise HTTPException(status_code=400, detail="La vigencia supera el rango de fechas admitido.") from None
+
+    @staticmethod
+    def _valid_discord_id(role_id: Optional[str]) -> bool:
+        return bool(role_id and len(role_id) <= 20 and role_id.isascii() and role_id.isdigit()
+                    and role_id[0] != "0" and int(role_id) < 2 ** 64)
+
+    @staticmethod
+    def _effective_slot_expiry(expiries: List[Optional[datetime]]) -> Optional[datetime]:
+        if not expiries or any(expiry is None for expiry in expiries):
+            return None
+        return max(expiry.replace(tzinfo=timezone.utc) if expiry.tzinfo is None else expiry for expiry in expiries)
+
+    @staticmethod
+    async def _deliver_discord_membership(
+        membership: Membership, player: Player, session: AsyncSession, replayed: bool = False, guild_id: Optional[str] = None
+    ) -> AddMembershipResponse:
+        """Deliver this saved membership only. A retry never creates or extends it again."""
+        # Creation commits before remote delivery. Reacquire the same player lock
+        # so a later renewal cannot overtake this Warcon write with a newer expiry.
+        player = (await session.exec(select(Player).where(
+            Player.steam_id == membership.steam_id
+        ).with_for_update().execution_options(populate_existing=True))).first()
+        if not player:
+            raise HTTPException(status_code=409, detail="El jugador de esta membresía ya no está registrado.")
+        await session.refresh(membership)
+        if not MembershipsService._valid_discord_id(player.discord_id):
+            raise HTTPException(status_code=409, detail="El jugador ya no tiene una cuenta de Discord válida vinculada.")
+        now = datetime.now(timezone.utc)
+        end_time = membership.end_time
+        if end_time and end_time.tzinfo is None:
+            end_time = end_time.replace(tzinfo=timezone.utc)
+        if not membership.is_active or (end_time and end_time <= now):
+            raise HTTPException(status_code=409, detail="La membresía de esta operación ya no está vigente.")
+        if guild_id:
+            if not membership.role_granted_id:
+                raise HTTPException(status_code=409, detail="El rol lógico de esta membresía ya no está configurado.")
+            role_ids = await MembershipRolesService.resolve_roles(
+                guild_id, [role_id for role_id in (membership.role_granted_id, membership.special_role_id) if role_id], session, lock=False
+            )
+        else:
+            role_ids = []
+            for role_id in (membership.role_granted_id, membership.special_role_id):
+                role = await session.get(Role, role_id) if role_id else None
+                if role_id == membership.role_granted_id and (not role or not MembershipsService._valid_discord_id(role.discord_role_id)):
+                    raise HTTPException(status_code=409, detail="El rol de Discord de esta membresía ya no está configurado.")
+                if role and MembershipsService._valid_discord_id(role.discord_role_id) and role.discord_role_id not in role_ids:
+                    role_ids.append(role.discord_role_id)
+        # One game slot represents all current global memberships. A shorter new
+        # membership must never replace the expiry of a longer or permanent benefit.
+        active_expiries = (await session.exec(select(Membership.end_time).where(
+            Membership.steam_id == membership.steam_id,
+            Membership.is_active == True,
+            Membership.server_id == None,
+            or_(Membership.end_time == None, Membership.end_time > now),
+        ))).all()
+        slot_expiry = MembershipsService._effective_slot_expiry(active_expiries)
+        warcon = await WarconClient().upsert_reserved_slot(
+            membership.steam_id, membership.id, membership.membership_type, slot_expiry
+        )
+        membership.rcon_sync_status = warcon.status
+        session.add(membership)
+        await session.commit()
+        await session.refresh(membership)
+        return AddMembershipResponse(
+            ok=True,
+            message="Membership already registered" if replayed else "Membership added",
+            membership=CreatedMembershipItem(
+                id=membership.id, steam_id=membership.steam_id, type=membership.membership_type,
+                start_date=membership.start_time.replace(tzinfo=timezone.utc) if membership.start_time.tzinfo is None else membership.start_time,
+                end_date=end_time, is_booster=membership.is_booster,
+                server_id=membership.server_id,
+            ),
+            discord=MembershipDiscordDelivery(user_id=player.discord_id, role_ids=role_ids, guild_id=guild_id),
+            warcon=warcon,
+            replayed=replayed,
+        )
 
     @staticmethod
     async def _deactivate_membership(m: Membership, session: AsyncSession, revoke_special_role: bool = False) -> None:
@@ -230,142 +418,69 @@ class MembershipsService:
         if not membership:
             raise HTTPException(status_code=404, detail="Membership not found")
             
-        if req.membership_type is not None:
-            norm_type = req.membership_type.strip().upper()
-            membership.membership_type = req.membership_type
-            
-            # Synchronize role_granted_id and player_roles with new membership type
+        if req.server_id is not None and await session.get(RconServer, req.server_id) is None:
+            raise HTTPException(status_code=404, detail="Servidor RCON no encontrado.")
+        # Calculate every requested date before mutating the membership or roles.
+        now_utc = datetime.now(timezone.utc)
+        m_type = None
+        norm_type = req.membership_type.strip().upper() if req.membership_type is not None else None
+        if norm_type is not None:
             m_type = (await session.exec(select(MembershipType).where(func.upper(MembershipType.code) == norm_type))).first()
-            if m_type and m_type.role_id:
-                old_role_id = membership.role_granted_id
-                if old_role_id != m_type.role_id:
-                    membership.role_granted_id = m_type.role_id
-                    if membership.is_active:
-                        if old_role_id:
-                            other_active = (await session.exec(
-                                select(Membership.id).where(
-                                    Membership.steam_id == membership.steam_id,
-                                    Membership.is_active == True,
-                                    Membership.id != membership.id,
-                                    Membership.role_granted_id == old_role_id
-                                )
-                            )).first()
-                            if not other_active:
-                                old_r = await session.get(Role, old_role_id)
-                                if old_r and old_r.role_type == "VIP":
-                                    old_pr = (await session.exec(select(PlayerRole).where(
-                                        PlayerRole.steam_id == membership.steam_id,
-                                        PlayerRole.role_id == old_role_id
-                                    ))).first()
-                                    if old_pr:
-                                        await session.delete(old_pr)
-                        new_pr = (await session.exec(select(PlayerRole).where(
-                            PlayerRole.steam_id == membership.steam_id,
-                            PlayerRole.role_id == m_type.role_id
-                        ))).first()
-                        if not new_pr:
-                            session.add(PlayerRole(steam_id=membership.steam_id, role_id=m_type.role_id))
-            
-            # Si se edita el tipo y no se pasaron días explícitos, ajustar la fecha de acuerdo al tipo (achicarse o agrandarse)
-            if req.days is None:
-                if m_type is not None:
-                    type_days = m_type.default_days
-                else:
-                    config_key = f"ROLE_DAYS_{norm_type}"
-                    config_days = (await session.exec(select(BotConfig).where(BotConfig.config_key == config_key))).first()
-                    if config_days and config_days.config_value.isdigit():
+        new_end_time = membership.end_time
+        date_active = membership.is_active
+        start_base = membership.start_time or now_utc
+        if start_base.tzinfo is None:
+            start_base = start_base.replace(tzinfo=timezone.utc)
+        if norm_type is not None and req.days is None:
+            if m_type is not None:
+                type_days = m_type.default_days
+            else:
+                config_key = f"ROLE_DAYS_{norm_type}"
+                config_days = (await session.exec(select(BotConfig).where(BotConfig.config_key == config_key))).first()
+                type_days = 30
+                if config_days and config_days.config_value.isascii() and config_days.config_value.isdigit():
+                    try:
                         type_days = int(config_days.config_value)
-                    else:
-                        type_days = 30
-                
-                start_base = membership.start_time or datetime.now(timezone.utc)
-                if start_base.tzinfo is None:
-                    start_base = start_base.replace(tzinfo=timezone.utc)
-                
-                if type_days == 0 or norm_type == "VIP_PERMANENTE":
-                    membership.end_time = None
-                    if req.is_active is None:
-                        membership.is_active = True
-                else:
-                    membership.end_time = start_base + timedelta(days=type_days)
-                    if req.is_active is None:
-                        now_utc = datetime.now(timezone.utc)
-                        end_dt = membership.end_time
-                        if end_dt is not None and end_dt.tzinfo is None:
-                            end_dt = end_dt.replace(tzinfo=timezone.utc)
-                        membership.is_active = end_dt is not None and end_dt > now_utc
-            
+                    except ValueError:
+                        raise HTTPException(status_code=400, detail="La configuración de días de esta membresía no es válida.") from None
+            new_end_time = (None if type_days == 0 or norm_type == "VIP_PERMANENTE"
+                            else MembershipsService._add_days(start_base, type_days))
+            if req.is_active is None:
+                date_active = new_end_time is None or new_end_time > now_utc
         if req.days is not None:
             if req.days < 0:
                 raise HTTPException(status_code=400, detail="Los días de membresía deben ser 0 (permanente) o un número positivo.")
-            if req.days == 0:
-                membership.end_time = None
-                if req.is_active is None:
-                    membership.is_active = True
-            else:
-                start_base = membership.start_time or datetime.now(timezone.utc)
-                membership.end_time = start_base + timedelta(days=req.days)
-                if req.is_active is None:
-                    now_utc = datetime.now(timezone.utc)
-                    end_dt = membership.end_time
-                    if end_dt.tzinfo is None:
-                        end_dt = end_dt.replace(tzinfo=timezone.utc)
-                    membership.is_active = end_dt > now_utc
-                
+            new_end_time = MembershipsService._add_days(start_base, req.days) if req.days else None
+            if req.is_active is None:
+                date_active = new_end_time is None or new_end_time > now_utc
         if req.add_days is not None:
             if req.add_days <= 0:
                 raise HTTPException(status_code=400, detail="La cantidad de días extra a añadir (add_days) debe ser mayor a 0.")
-            now_utc = datetime.now(timezone.utc)
-            base_time = membership.end_time
-            if base_time is not None:
-                if base_time.tzinfo is None:
-                    base_time = base_time.replace(tzinfo=timezone.utc)
-                effective_base = max(base_time, now_utc)
-                membership.end_time = effective_base + timedelta(days=req.add_days)
-            else:
-                pass
+            if new_end_time is not None:
+                base = new_end_time.replace(tzinfo=timezone.utc) if new_end_time.tzinfo is None else new_end_time
+                new_end_time = MembershipsService._add_days(max(base, now_utc), req.add_days)
+            if req.is_active is None and (new_end_time is None or new_end_time > now_utc):
+                date_active = True
 
-            if req.is_active is None:
-                end_dt = membership.end_time
-                if end_dt is not None and end_dt.tzinfo is None:
-                    end_dt = end_dt.replace(tzinfo=timezone.utc)
-                if end_dt is None or end_dt > now_utc:
-                    membership.is_active = True
-                    if membership.role_granted_id:
-                        vip_pr = (await session.exec(select(PlayerRole).where(
-                            PlayerRole.steam_id == membership.steam_id,
-                            PlayerRole.role_id == membership.role_granted_id
-                        ))).first()
-                        if not vip_pr:
-                            session.add(PlayerRole(steam_id=membership.steam_id, role_id=membership.role_granted_id))
-                    if membership.special_role_id:
-                        sp_pr = (await session.exec(select(PlayerRole).where(
-                            PlayerRole.steam_id == membership.steam_id,
-                            PlayerRole.role_id == membership.special_role_id
-                        ))).first()
-                        if not sp_pr:
-                            session.add(PlayerRole(steam_id=membership.steam_id, role_id=membership.special_role_id))
-                
-        if req.is_active is not None:
-            if not req.is_active:
+        if req.membership_type is not None:
+            if m_type and m_type.role_id and membership.role_granted_id != m_type.role_id:
+                # Reuse the entitlement checks for the old VIP role. Special
+                # badges remain attached according to the existing policy.
                 await MembershipsService._deactivate_membership(membership, session)
-            else:
-                membership.is_active = True
-                if membership.role_granted_id:
-                    vip_pr = (await session.exec(select(PlayerRole).where(
-                        PlayerRole.steam_id == membership.steam_id,
-                        PlayerRole.role_id == membership.role_granted_id
-                    ))).first()
-                    if not vip_pr:
-                        session.add(PlayerRole(steam_id=membership.steam_id, role_id=membership.role_granted_id))
-                if membership.special_role_id:
-                    sp_pr = (await session.exec(select(PlayerRole).where(
-                        PlayerRole.steam_id == membership.steam_id,
-                        PlayerRole.role_id == membership.special_role_id
-                    ))).first()
-                    if not sp_pr:
-                        session.add(PlayerRole(steam_id=membership.steam_id, role_id=membership.special_role_id))
-                session.add(membership)
+                membership.role_granted_id = m_type.role_id
+            membership.membership_type = req.membership_type
+        membership.end_time = new_end_time
+        desired_active = req.is_active if req.is_active is not None else date_active
+        if not desired_active:
+            await MembershipsService._deactivate_membership(membership, session)
+        else:
+            membership.is_active = True
+            for role_id in dict.fromkeys((membership.role_granted_id, membership.special_role_id)):
+                if role_id is None:
+                    continue
+                assigned = await session.get(PlayerRole, (membership.steam_id, role_id))
+                if not assigned:
+                    session.add(PlayerRole(steam_id=membership.steam_id, role_id=role_id))
 
         if req.is_booster is not None:
             membership.is_booster = req.is_booster
@@ -385,12 +500,13 @@ class MembershipsService:
         stmt = select(Membership).where(Membership.is_active == True, Membership.end_time != None)
         active_memberships = (await session.exec(stmt)).all()
         
-        count = 0
-        for m in active_memberships:
-            if m.end_time:
-                m.end_time = m.end_time + timedelta(days=days)
-                session.add(m)
-                count += 1
+        # Validate the complete batch before changing any member's benefits.
+        updates = [(m, MembershipsService._add_days(m.end_time, days))
+                   for m in active_memberships if m.end_time is not None]
+        for membership, end_time in updates:
+            membership.end_time = end_time
+            session.add(membership)
+        count = len(updates)
             
         await session.commit()
         if count > 0:
@@ -419,7 +535,10 @@ class MembershipsService:
         return {"ok": True, "message": "Membership deleted"}
 
     @staticmethod
-    async def get_paginated_memberships(page: int, limit: int, session: AsyncSession, discord_id: Optional[str] = None) -> Dict[str, Any]:
+    async def get_paginated_memberships(page: int, limit: int, session: AsyncSession, discord_id: Optional[str] = None,
+                                        guild_id: Optional[str] = None) -> Dict[str, Any]:
+        if guild_id:
+            MembershipRolesService.require_enabled_guild(guild_id)
         target_steam_id = None
         if discord_id:
             player = (await session.exec(select(Player).where(Player.discord_id == discord_id))).first()
@@ -433,7 +552,7 @@ class MembershipsService:
             target_steam_id = player.steam_id
 
         offset = max(0, (page - 1) * limit)
-        statement = select(Membership).order_by(col(Membership.start_time).desc())
+        statement = select(Membership).order_by(col(Membership.start_time).desc(), col(Membership.id).desc())
         total_statement = select(func.count(col(Membership.id)))
         if target_steam_id:
             statement = statement.where(Membership.steam_id == target_steam_id)
@@ -453,6 +572,12 @@ class MembershipsService:
         if role_ids:
             fetched_roles = (await session.exec(select(Role).where(col(Role.id).in_(role_ids)))).all()
             roles_by_id = {r.id: r for r in fetched_roles if r.id is not None}
+        discord_roles_by_id = {role_id: role.discord_role_id for role_id, role in roles_by_id.items()}
+        if guild_id:
+            bindings = (await session.exec(select(RoleDiscordBinding).where(
+                RoleDiscordBinding.guild_id == guild_id, col(RoleDiscordBinding.role_id).in_(role_ids),
+            ))).all() if role_ids else []
+            discord_roles_by_id = {binding.role_id: binding.discord_role_id for binding in bindings}
 
         results = []
         for m in memberships:
@@ -461,14 +586,14 @@ class MembershipsService:
             if m.special_role_id and m.special_role_id in roles_by_id:
                 r = roles_by_id[m.special_role_id]
                 special_role_name = r.name
-                special_discord_role_id = r.discord_role_id
+                special_discord_role_id = discord_roles_by_id.get(m.special_role_id)
 
             role_granted_name = None
             role_granted_discord_id = None
             if m.role_granted_id and m.role_granted_id in roles_by_id:
                 rg = roles_by_id[m.role_granted_id]
                 role_granted_name = rg.name
-                role_granted_discord_id = rg.discord_role_id
+                role_granted_discord_id = discord_roles_by_id.get(m.role_granted_id)
             
             results.append({
                 "id": m.id,
@@ -485,7 +610,7 @@ class MembershipsService:
                 "special_role": special_role_name,
                 "special_role_id": m.special_role_id,
                 "special_discord_role_id": special_discord_role_id,
-                "rcon_sync_status": "SUCCESS" if m.is_active else "INACTIVE",
+                "rcon_sync_status": m.rcon_sync_status,
             })
         
         return {
@@ -516,42 +641,44 @@ class MembershipsService:
         active_stmt = select(Membership.steam_id).where(Membership.is_active == True).distinct()
         active_steam_ids = set((await session.exec(active_stmt)).all())
 
-        # 3. Sync RCON per-server (respecting server_id scope)
-        sync_failed = False
-        try:
-            active_servers = await RCONManager.get_all_active_servers(session)
-            for s_info, client in active_servers:
-                try:
-                    if s_info.id is not None:
-                        s_vip_stmt = select(Membership.steam_id).where(
-                            Membership.is_active == True,
-                            or_(Membership.server_id == None, Membership.server_id == s_info.id)
-                        ).distinct()
-                    else:
-                        s_vip_stmt = select(Membership.steam_id).where(
-                            Membership.is_active == True,
-                            Membership.server_id == None
-                        ).distinct()
-                    raw_sids = set((await session.exec(s_vip_stmt)).all())
-                    server_steam_ids = sorted(list(raw_sids))
-                    await client.sync_reserved_slots(server_steam_ids)
-                except Exception as s_err:
-                    sync_failed = True
-                    logger.warning(f"Failed to sync RCON reserved slots to {s_info.name} ({s_info.base_url}): {s_err}")
+        # Warcon owns its list and expiry; legacy RCON must not overwrite that list.
+        if not ENVIRONMENT_SETTINGS.CONNECTIONS_SETTINGS.WARCON_URL.strip():
+            # 3. Sync RCON per-server (respecting server_id scope)
+            sync_failed = False
+            try:
+                active_servers = await RCONManager.get_all_active_servers(session)
+                for s_info, client in active_servers:
+                    try:
+                        if s_info.id is not None:
+                            s_vip_stmt = select(Membership.steam_id).where(
+                                Membership.is_active == True,
+                                or_(Membership.server_id == None, Membership.server_id == s_info.id)
+                            ).distinct()
+                        else:
+                            s_vip_stmt = select(Membership.steam_id).where(
+                                Membership.is_active == True,
+                                Membership.server_id == None
+                            ).distinct()
+                        raw_sids = set((await session.exec(s_vip_stmt)).all())
+                        server_steam_ids = sorted(list(raw_sids))
+                        await client.sync_reserved_slots(server_steam_ids)
+                    except Exception as s_err:
+                        sync_failed = True
+                        logger.warning(f"Failed to sync RCON reserved slots to {s_info.name} ({s_info.base_url}): {s_err}")
             
-            if not sync_failed:
-                # Update pending RCON sync status only if all active servers succeeded
-                pending_m_stmt = select(Membership).where(
-                    Membership.is_active == True,
-                    Membership.rcon_sync_status != "SUCCESS"
-                ).order_by(col(Membership.id))
-                for m in (await session.exec(pending_m_stmt)).all():
-                    m.rcon_sync_status = "SUCCESS"
-                    session.add(m)
-                await session.commit()
+                if not sync_failed:
+                    # Update pending RCON sync status only if all active servers succeeded
+                    pending_m_stmt = select(Membership).where(
+                        Membership.is_active == True,
+                        Membership.rcon_sync_status != "SUCCESS"
+                    ).order_by(col(Membership.id))
+                    for m in (await session.exec(pending_m_stmt)).all():
+                        m.rcon_sync_status = "SUCCESS"
+                        session.add(m)
+                    await session.commit()
             
-        except Exception as e:
-            logger.error(f"Failed to sync RCON reserved slots: {e}", exc_info=True)
+            except Exception as e:
+                logger.error(f"Failed to sync RCON reserved slots: {e}", exc_info=True)
             
         # 4. Prepare data for Discord Bot Role Sync
         players_stmt = select(Player).where(Player.discord_id != None).order_by(col(Player.steam_id))

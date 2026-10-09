@@ -29,6 +29,11 @@ class SecuritySettings(BaseAppConfig):
         validation_alias="DISCORD_GUILD_ID",
         description="Target Discord guild/server ID",
     )
+    DISCORD_GUILD_IDS: Optional[str] = pydantic.Field(
+        default=None,
+        validation_alias="DISCORD_GUILD_IDS",
+        description="Comma-separated guild IDs enabled for membership role configuration; falls back to DISCORD_GUILD_ID",
+    )
     DISCORD_CLIENT_ID: Optional[str] = pydantic.Field(
         default=None,
         validation_alias="DISCORD_CLIENT_ID",

@@ -1,14 +1,15 @@
-from typing import Any, Dict, Optional
-from fastapi import APIRouter, Depends, Request, HTTPException, Header
+from typing import Annotated, Any, Dict, Optional
+from fastapi import APIRouter, Depends, Request, HTTPException, Header, Path, Query
 from fastapi.responses import FileResponse
 from sqlmodel.ext.asyncio.session import AsyncSession
 from wardogs_schemas import v1 as schemas
+from wardogs_schemas.dtos import DiscordSnowflake
 
 from src.security.guard import verify_api_key_guard
 from src.connections.databases.db import get_session
 from wardogs_config import ENVIRONMENT_SETTINGS
 from src.modules.v1.schemas.dtos import (
-    AddMembershipRequest, EditMembershipRequest, CompensateRequest
+    AddMembershipRequest, AddMembershipResponse, EditMembershipRequest, CompensateRequest
 )
 from src.modules.v1.services.memberships_service import MembershipsService
 from src.modules.v1.services.export_service import (
@@ -23,12 +24,12 @@ router = APIRouter(tags=["Memberships"])
 # TTL for the one-time CSV export download token
 _EXPORT_TOKEN_TTL_SECONDS = 1800  # 30 minutes
 
-@router.post("/db/players/membership", dependencies=[Depends(verify_api_key_guard)], response_model=schemas.Ok)
+@router.post("/db/players/membership", dependencies=[Depends(verify_api_key_guard)], response_model=AddMembershipResponse)
 async def add_membership(req: AddMembershipRequest, session: AsyncSession = Depends(get_session)):
     return await MembershipsService.add_membership(req, session)
 
 @router.put("/db/memberships/{membership_id}", dependencies=[Depends(verify_api_key_guard)], response_model=schemas.Ok)
-async def edit_membership(membership_id: int, req: EditMembershipRequest, session: AsyncSession = Depends(get_session)):
+async def edit_membership(membership_id: Annotated[int, Path(ge=1, le=2 ** 31 - 1)], req: EditMembershipRequest, session: AsyncSession = Depends(get_session)):
     return await MembershipsService.edit_membership(membership_id, req, session)
 
 @router.post("/db/memberships/compensate", dependencies=[Depends(verify_api_key_guard)], response_model=schemas.Ok)
@@ -36,12 +37,16 @@ async def compensate_memberships(req: CompensateRequest, session: AsyncSession =
     return await MembershipsService.compensate_memberships(req.days, session)
 
 @router.delete("/db/memberships/{membership_id}", dependencies=[Depends(verify_api_key_guard)], response_model=schemas.Ok)
-async def delete_membership(membership_id: int, session: AsyncSession = Depends(get_session)):
+async def delete_membership(membership_id: Annotated[int, Path(ge=1, le=2 ** 31 - 1)], session: AsyncSession = Depends(get_session)):
     return await MembershipsService.delete_membership(membership_id, session)
 
 @router.get("/db/memberships", dependencies=[Depends(verify_api_key_guard)])
-async def get_paginated_memberships(page: int = 1, limit: int = 10, discord_id: Optional[str] = None, session: AsyncSession = Depends(get_session)):
-    return await MembershipsService.get_paginated_memberships(page, limit, session, discord_id=discord_id)
+async def get_paginated_memberships(page: Annotated[int, Query(ge=1, le=2 ** 31 - 1)] = 1,
+                                    limit: Annotated[int, Query(ge=1, le=2 ** 31 - 1)] = 10,
+                                    discord_id: Optional[str] = None,
+                                    guild_id: Optional[DiscordSnowflake] = None,
+                                    session: AsyncSession = Depends(get_session)):
+    return await MembershipsService.get_paginated_memberships(page, limit, session, discord_id=discord_id, guild_id=guild_id)
 
 @router.post("/db/sync_memberships", dependencies=[Depends(verify_api_key_guard)])
 async def sync_memberships_endpoint(session: AsyncSession = Depends(get_session)):

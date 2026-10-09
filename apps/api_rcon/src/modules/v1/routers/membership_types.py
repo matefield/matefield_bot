@@ -1,5 +1,5 @@
-from typing import Any, Dict, List, Optional
-from fastapi import APIRouter, Depends, HTTPException
+from typing import Annotated, Any, Dict, List, Optional
+from fastapi import APIRouter, Depends, HTTPException, Path
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from src.security.guard import verify_api_key_guard
@@ -44,6 +44,7 @@ async def get_membership_type(
         "name": m_type.name,
         "description": m_type.description,
         "price_usd": round(m_type.price_usd / 100.0, 2),
+        "price_ars": round(m_type.price_ars / 100.0, 2) if m_type.price_ars is not None else None,
         "billing_type": m_type.billing_type,
         "default_days": m_type.default_days,
         "max_quota": m_type.max_quota,
@@ -59,7 +60,7 @@ async def get_membership_type(
 
 @router.put("/{type_id}", dependencies=[Depends(verify_api_key_guard)])
 async def update_membership_type(
-    type_id: int,
+    type_id: Annotated[int, Path(ge=1, le=2 ** 31 - 1)],
     req: UpdateMembershipTypeRequest,
     session: AsyncSession = Depends(get_session)
 ) -> Dict[str, Any]:
@@ -68,7 +69,7 @@ async def update_membership_type(
 
 @router.delete("/{type_id}", dependencies=[Depends(verify_api_key_guard)])
 async def delete_membership_type(
-    type_id: int,
+    type_id: Annotated[int, Path(ge=1, le=2 ** 31 - 1)],
     session: AsyncSession = Depends(get_session)
 ) -> Dict[str, Any]:
     return await MembershipTypesService.delete_type(type_id, session)

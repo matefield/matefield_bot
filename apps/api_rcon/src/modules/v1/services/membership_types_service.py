@@ -1,7 +1,8 @@
 from __future__ import annotations
 from typing import List, Dict, Any, Optional, Union
 from datetime import datetime, timezone
-from sqlmodel import select, func, col
+from decimal import Decimal, ROUND_HALF_UP
+from sqlmodel import select, func, col, or_
 from sqlmodel.ext.asyncio.session import AsyncSession
 from fastapi import HTTPException
 
@@ -11,6 +12,11 @@ from src.modules.v1.schemas.dtos import (
     UpdateMembershipTypeRequest,
     MembershipTypeItem,
 )
+
+
+def _price_cents(value: float) -> int:
+    """Convert currency units without losing cents to binary float rounding."""
+    return int((Decimal(str(value)) * 100).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
 
 
 class MembershipTypesService:
@@ -30,7 +36,8 @@ class MembershipTypesService:
         # Calculate current usage per membership type
         usage_stmt = (
             select(Membership.membership_type, func.count(col(Membership.id)))
-            .where(Membership.is_active == True)
+            .where(Membership.is_active == True,
+                   or_(Membership.end_time == None, Membership.end_time > datetime.now(timezone.utc)))
             .group_by(Membership.membership_type)
         )
         usage_rows = (await session.exec(usage_stmt)).all()
@@ -69,6 +76,7 @@ class MembershipTypesService:
                 "name": t.name,
                 "description": t.description,
                 "price_usd": round(t.price_usd / 100.0, 2),
+                "price_ars": round(t.price_ars / 100.0, 2) if t.price_ars is not None else None,
                 "billing_type": t.billing_type,
                 "default_days": t.default_days,
                 "max_quota": t.max_quota,
@@ -86,8 +94,12 @@ class MembershipTypesService:
 
     @staticmethod
     async def get_type(identifier: Union[int, str], session: AsyncSession) -> Optional[MembershipType]:
-        if isinstance(identifier, int) or (isinstance(identifier, str) and identifier.isdigit()):
-            return await session.get(MembershipType, int(identifier))
+        if isinstance(identifier, int):
+            return await session.get(MembershipType, identifier) if 0 < identifier < 2 ** 31 else None
+        if isinstance(identifier, str) and len(identifier) <= 10 and identifier.isascii() and identifier.isdigit():
+            type_id = int(identifier)
+            if 0 < type_id < 2 ** 31:
+                return await session.get(MembershipType, type_id)
         code = str(identifier).strip().upper()
         stmt = select(MembershipType).where(func.upper(MembershipType.code) == code)
         return (await session.exec(stmt)).first()
@@ -121,8 +133,7 @@ class MembershipTypesService:
                     role_type="VIP"
                 )
                 session.add(new_role)
-                await session.commit()
-                await session.refresh(new_role)
+                await session.flush()
                 role_to_link_id = new_role.id
 
         role_obj = None
@@ -135,7 +146,7 @@ class MembershipTypesService:
         if billing_type not in ("ONE_TIME", "RECURRING"):
             raise HTTPException(status_code=400, detail="billing_type debe ser 'ONE_TIME' o 'RECURRING'")
 
-        price_usd_cents = max(0, int(float(req.price_usd) * 100))
+        price_usd_cents = _price_cents(req.price_usd)
 
         now = datetime.now(timezone.utc)
         m_type = MembershipType(
@@ -143,6 +154,7 @@ class MembershipTypesService:
             name=req.name.strip(),
             description=req.description,
             price_usd=price_usd_cents,
+            price_ars=_price_cents(req.price_ars) if req.price_ars is not None else None,
             billing_type=billing_type,
             default_days=req.default_days if req.default_days is not None else 30,
             max_quota=req.max_quota,
@@ -165,6 +177,7 @@ class MembershipTypesService:
                 "name": m_type.name,
                 "description": m_type.description,
                 "price_usd": round(m_type.price_usd / 100.0, 2),
+                "price_ars": round(m_type.price_ars / 100.0, 2) if m_type.price_ars is not None else None,
                 "billing_type": m_type.billing_type,
                 "default_days": m_type.default_days,
                 "max_quota": m_type.max_quota,
@@ -208,8 +221,7 @@ class MembershipTypesService:
                         role_type="VIP"
                     )
                     session.add(new_role)
-                    await session.commit()
-                    await session.refresh(new_role)
+                    await session.flush()
                     new_role_id = new_role.id
             if new_role_id is not None:
                 role = await session.get(Role, new_role_id)
@@ -224,7 +236,9 @@ class MembershipTypesService:
         if req.description is not None:
             m_type.description = req.description
         if req.price_usd is not None:
-            m_type.price_usd = max(0, int(float(req.price_usd) * 100))
+            m_type.price_usd = _price_cents(req.price_usd)
+        if "price_ars" in req.model_fields_set:
+            m_type.price_ars = _price_cents(req.price_ars) if req.price_ars is not None else None
         if req.billing_type is not None:
             b_type = req.billing_type.upper()
             if b_type not in ("ONE_TIME", "RECURRING"):
@@ -253,6 +267,7 @@ class MembershipTypesService:
                 "name": m_type.name,
                 "description": m_type.description,
                 "price_usd": round(m_type.price_usd / 100.0, 2),
+                "price_ars": round(m_type.price_ars / 100.0, 2) if m_type.price_ars is not None else None,
                 "billing_type": m_type.billing_type,
                 "default_days": m_type.default_days,
                 "max_quota": m_type.max_quota,
@@ -289,18 +304,19 @@ class MembershipTypesService:
 
         if count == 0:
             defaults = [
-                ("VIP_COMUN", "VIP Común", "Membresía estándar mensual con slot reservado", 6.0, 30, roles_by_code.get("VIP_COMUN") or roles_by_code.get("VIP")),
-                ("VIP_EXPRESS", "VIP Express", "Pase rápido quincenal con slot reservado", 4.0, 15, roles_by_code.get("VIP_EXPRESS")),
-                ("VIP_PERMANENTE", "VIP Permanente", "Membresía vitalicia sin expiración", 0.0, 0, roles_by_code.get("VIP_PERMANENTE")),
+                ("VIP_COMUN", "VIP NORMAL", "Prioridad de conexión y rol VIP por 30 días", 5.0, 7000.0, 30, roles_by_code.get("VIP_COMUN") or roles_by_code.get("VIP")),
+                ("VIP_EXPRESS", "VIP EXPRESS", "Prioridad de conexión y rol VIP EXPRESS por 14 días", 3.0, 5000.0, 14, roles_by_code.get("VIP_EXPRESS")),
+                ("VIP_PERMANENTE", "VIP Permanente", "Membresía vitalicia sin expiración", 0.0, None, 0, roles_by_code.get("VIP_PERMANENTE")),
             ]
 
             now = datetime.now(timezone.utc)
-            for code, name, desc, price, days, r_id in defaults:
+            for code, name, desc, price, price_ars, days, r_id in defaults:
                 session.add(MembershipType(
                     code=code,
                     name=name,
                     description=desc,
-                    price_usd=int(price * 100),
+                    price_usd=_price_cents(price),
+                    price_ars=_price_cents(price_ars) if price_ars is not None else None,
                     billing_type="ONE_TIME",
                     default_days=days,
                     max_quota=None,
