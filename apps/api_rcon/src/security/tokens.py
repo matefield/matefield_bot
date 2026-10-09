@@ -16,14 +16,14 @@ import hmac
 import json
 import logging
 import time
-from typing import Any, Dict, Optional
+from typing import Any
 
 from wardogs_config import ENVIRONMENT_SETTINGS
 
 logger = logging.getLogger("wardogs.security.tokens")
 
 
-def generate_signed_payload_token(payload: Dict[str, Any], expires_in_seconds: int = 300) -> str:
+def generate_signed_payload_token(payload: dict[str, Any], expires_in_seconds: int = 300) -> str:
     """Generates a short-lived signed token for browser flow state."""
     token_payload = {**payload, "exp": int(time.time()) + expires_in_seconds}
     payload_bytes = json.dumps(token_payload, separators=(",", ":")).encode("utf-8")
@@ -34,7 +34,7 @@ def generate_signed_payload_token(payload: Dict[str, Any], expires_in_seconds: i
     return f"{encoded_payload}.{encoded_signature}"
 
 
-def verify_signed_payload_token(token: str) -> Optional[Dict[str, Any]]:
+def verify_signed_payload_token(token: str) -> dict[str, Any] | None:
     """Returns a signed browser-flow payload when it is authentic and unexpired."""
     try:
         encoded_payload, encoded_signature = token.split(".", 1)
@@ -62,7 +62,7 @@ def verify_signed_payload_token(token: str) -> Optional[Dict[str, Any]]:
 def generate_secure_download_token(filename: str, expires_in_seconds: int = 1800) -> str:
     """Generates a stateless, tamper-proof HMAC-SHA256 download token for any file."""
     expires_at = int(time.time()) + expires_in_seconds
-    message = f"{filename}:{expires_at}".encode("utf-8")
+    message = f"{filename}:{expires_at}".encode()
     secret = ENVIRONMENT_SETTINGS.SECURITY_SETTINGS.API_KEY.encode("utf-8")
     sig = hmac.new(secret, message, hashlib.sha256).hexdigest()
     return f"{expires_at}.{sig}"
@@ -78,7 +78,7 @@ def verify_secure_download_token(filename: str, token: str) -> bool:
         expires_at = int(expires_at_str)
         if time.time() > expires_at:
             return False
-        message = f"{filename}:{expires_at}".encode("utf-8")
+        message = f"{filename}:{expires_at}".encode()
         secret = ENVIRONMENT_SETTINGS.SECURITY_SETTINGS.API_KEY.encode("utf-8")
         expected_sig = hmac.new(secret, message, hashlib.sha256).hexdigest()
         return hmac.compare_digest(expected_sig, sig)

@@ -1,79 +1,48 @@
-from datetime import datetime, timezone
 import pytest
 from httpx import AsyncClient
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
-
-from src.connections.databases.db import Player, PlayerSession, RewardItem, RewardClaim, Membership
+from src.connections.databases.db import Membership, Player
 from src.modules.v1.services.rewards_service import RewardsService
 
 
 @pytest.mark.asyncio
-async def test_process_session_seeding_points_accumulation(session: AsyncSession):
-    player = Player(steam_id="76561198000000001", discord_id="discord_seed_01", reward_points=0)
-    sess = PlayerSession(steam_id=player.steam_id, start_time=datetime.now(timezone.utc))
+async def test_evaluate_global_seeding_points_accumulation(session: AsyncSession):
+    player = Player(
+        steam_id="76561198000000001", 
+        discord_id="discord_seed_01", 
+        reward_points=0,
+        global_seeding_seconds=0,
+        global_rewarded_seconds=0
+    )
     session.add(player)
-    session.add(sess)
     await session.commit()
 
-    # 1. Non-seeding tick (delta = 600s, is_seeding = False)
-    awarded = RewardsService.process_session_seeding(
-        session_obj=sess,
-        player_obj=player,
-        delta_seconds=600,
-        is_seeding=False,
-        minutes_per_point=30, # 1800s required
-    )
+    # 1. Non-seeding amount (600s, need 1800s)
+    player.global_seeding_seconds += 600
+    awarded = RewardsService.evaluate_global_seeding(player, minutes_per_point=30)
     assert awarded == 0
-    assert sess.total_seconds == 600
-    assert sess.seeding_seconds == 0
+    assert player.global_rewarded_seconds == 0
     assert player.reward_points == 0
 
-    # 2. Seeding tick with 900s (15 min) -> under 1800s threshold
-    awarded = RewardsService.process_session_seeding(
-        session_obj=sess,
-        player_obj=player,
-        delta_seconds=900,
-        is_seeding=True,
-        minutes_per_point=30,
-    )
-    assert awarded == 0
-    assert sess.seeding_seconds == 900
-    assert sess.rewarded_seeding_seconds == 0
-    assert player.reward_points == 0
-
-    # 3. Next seeding tick with 900s (Total = 1800s = 30 min) -> exactly 1 point awarded
-    awarded = RewardsService.process_session_seeding(
-        session_obj=sess,
-        player_obj=player,
-        delta_seconds=900,
-        is_seeding=True,
-        minutes_per_point=30,
-    )
+    # 2. Reaches 1800s (1 point)
+    player.global_seeding_seconds += 1200
+    awarded = RewardsService.evaluate_global_seeding(player, minutes_per_point=30)
     session.add(player)
-    await session.flush()
+    await session.commit()
     await session.refresh(player)
-
     assert awarded == 1
-    assert sess.seeding_seconds == 1800
-    assert sess.rewarded_seeding_seconds == 1800
+    assert player.global_rewarded_seconds == 1800
     assert player.reward_points == 1
 
-    # 4. Long seeding tick with 3600s (60 min) -> 2 additional points awarded
-    awarded = RewardsService.process_session_seeding(
-        session_obj=sess,
-        player_obj=player,
-        delta_seconds=3600,
-        is_seeding=True,
-        minutes_per_point=30,
-    )
+    # 3. Massive accumulation (2 more points)
+    player.global_seeding_seconds += 3600
+    awarded = RewardsService.evaluate_global_seeding(player, minutes_per_point=30)
     session.add(player)
-    await session.flush()
+    await session.commit()
     await session.refresh(player)
-
     assert awarded == 2
-    assert sess.seeding_seconds == 5400
-    assert sess.rewarded_seeding_seconds == 5400
+    assert player.global_rewarded_seconds == 5400
     assert player.reward_points == 3
 
 
@@ -262,17 +231,14 @@ async def test_manual_ticket_refund_workflow(client: AsyncClient, session: Async
 
 @pytest.mark.asyncio
 async def test_give_points_and_balance_endpoints(client: AsyncClient, session: AsyncSession):
-    player = Player(steam_id="76561198000000006", discord_id="discord_user_06", reward_points=10)
-    # Add a session with 1800s seeding (30 min)
-    sess = PlayerSession(
-        steam_id="76561198000000006",
-        start_time=datetime.now(timezone.utc),
-        total_seconds=2000,
-        seeding_seconds=1800,
-        rewarded_seeding_seconds=1800,
+    player = Player(
+        steam_id="76561198000000006", 
+        discord_id="discord_user_06", 
+        reward_points=10,
+        global_seeding_seconds=1800,
+        global_rewarded_seconds=1800
     )
     session.add(player)
-    session.add(sess)
     await session.commit()
 
     # 1. Admin gives 25 points
@@ -303,24 +269,27 @@ async def test_give_points_and_balance_endpoints(client: AsyncClient, session: A
 @pytest.mark.asyncio
 async def test_rewards_requires_linked_account(client: AsyncClient, session: AsyncSession):
     # Player exists in game DB from Steam, but has NOT linked Discord (discord_id is None)
-    unlinked_player = Player(steam_id="76561198000099999", discord_id=None, reward_points=100)
-    sess = PlayerSession(steam_id=unlinked_player.steam_id, start_time=datetime.now(timezone.utc))
+    unlinked_player = Player(
+        steam_id="76561198000099999", 
+        discord_id=None, 
+        reward_points=100,
+        global_seeding_seconds=0,
+        global_rewarded_seconds=0
+    )
     session.add(unlinked_player)
-    session.add(sess)
     await session.commit()
 
     await RewardsService._ensure_defaults(session)
 
     # 1. Seeding tick does NOT award points to unlinked player
-    awarded = RewardsService.process_session_seeding(
-        session_obj=sess,
+    unlinked_player.global_seeding_seconds = 3600
+    awarded = RewardsService.evaluate_global_seeding(
         player_obj=unlinked_player,
-        delta_seconds=3600,
-        is_seeding=True,
         minutes_per_point=30,
         require_linked=True,
     )
     assert awarded == 0
+    assert unlinked_player.global_rewarded_seconds == 0
     assert unlinked_player.reward_points == 100
 
     # 2. Querying balance for unlinked player fails with 400

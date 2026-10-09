@@ -1,16 +1,14 @@
-import asyncio
-import crescent
-import hikari
 import logging
 
+import crescent
+import hikari
+
 logger = logging.getLogger(__name__)
-from src.model import Model
 from src.hooks import admin_only
+from src.model import Model
 
 plugin = crescent.Plugin[hikari.GatewayBot, Model]()
 from src.groups import leaderboard_group, player_group, server_group, special_role_group
-
-
 
 
 @plugin.include
@@ -59,7 +57,18 @@ class DbLeaderboard:
             s_data = steam_names.get(steam_id, {})
             steam_name = s_data.get("personaname") or s_data.get("name") or f"SteamID: {steam_id}"
             
-            player_mention = f"<@{discord_id}>" if discord_id else steam_name
+            player_mention = steam_name
+            if discord_id:
+                try:
+                    user = None
+                    if hasattr(ctx.app, "cache"):
+                        user = ctx.app.cache.get_user(int(discord_id)) # type: ignore
+                    if not user:
+                        user = await ctx.app.rest.fetch_user(int(discord_id))
+                    player_mention = f"@{user.username}"
+                except Exception:
+                    player_mention = f"<@{discord_id}>"
+            
             description += f"**{i}.** {player_mention} - **{entry['total']}**\n"
             
         embed.description = description
@@ -179,8 +188,7 @@ async def on_interaction(event: hikari.InteractionCreateEvent) -> None:
         linked = {"al": "all", "li": "linked", "un": "unlinked"}.get(l_char, "all")
         
         new_page = current_page - 1 if action == "prev" else current_page + 1
-        if new_page < 1:
-            new_page = 1
+        new_page = max(new_page, 1)
             
         try:
             res = await plugin.model.api.get_paginated_players(page=new_page, limit=10, linked=linked)
@@ -275,8 +283,7 @@ async def on_interaction(event: hikari.InteractionCreateEvent) -> None:
         current_page = int(parts[2])
         
         new_page = current_page - 1 if action == "prev" else current_page + 1
-        if new_page < 1:
-            new_page = 1
+        new_page = max(new_page, 1)
             
         try:
             res = await plugin.model.api.get_paginated_matches(page=new_page, limit=10)
@@ -400,7 +407,7 @@ class DbAddSpecialRole:
             if not player_info:
                 await ctx.respond(f"❌ El usuario {self.usuario.mention} no está vinculado.")
                 return
-            steam_id = player_info.get("steam_id")
+            steam_id = player_info.steam_id
 
             roles = await plugin.model.api.get_all_roles()
             role_obj = next((r for r in roles if r.get("code", "").upper() == self.rol_especial.strip().upper()), None)
@@ -433,7 +440,7 @@ class DbRemoveSpecialRole:
             if not player_info:
                 await ctx.respond(f"❌ El usuario {self.usuario.mention} no está vinculado.")
                 return
-            steam_id = player_info.get("steam_id")
+            steam_id = player_info.steam_id
 
             roles = await plugin.model.api.get_all_roles()
             role_obj = next((r for r in roles if r.get("code", "").upper() == self.rol_especial.strip().upper()), None)
@@ -462,7 +469,7 @@ class PlayerSetRole:
             if not player_info:
                 await ctx.respond(f"❌ El usuario {self.usuario.mention} no está vinculado.")
                 return
-            steam_id = player_info.get("steam_id")
+            steam_id = player_info.steam_id
 
             roles = await plugin.model.api.get_all_roles()
             role_obj = next((r for r in roles if r.get("code", "").upper() == self.rol.strip().upper()), None)
@@ -491,7 +498,7 @@ class PlayerRemoveRole:
             if not player_info:
                 await ctx.respond(f"❌ El usuario {self.usuario.mention} no está vinculado.")
                 return
-            steam_id = player_info.get("steam_id")
+            steam_id = player_info.steam_id
 
             roles = await plugin.model.api.get_all_roles()
             role_obj = next((r for r in roles if r.get("code", "").upper() == self.rol.strip().upper()), None)
@@ -522,7 +529,7 @@ class DbEditPlayer:
                 await ctx.respond(f"❌ El usuario {self.usuario_discord.mention} no está vinculado a ningún Steam ID. Usa `/player link` primero.")
                 return
                 
-            steam_id = player_info.get("steam_id")
+            steam_id = player_info.steam_id
             
             await plugin.model.api.edit_player(
                 str(steam_id), 

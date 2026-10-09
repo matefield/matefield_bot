@@ -7,6 +7,67 @@ y este proyecto se adhiere a [Semantic Versioning (SemVer 2.0.0)](https://semver
 
 ---
 
+## [1.7.0] - 2026-10-08
+
+### Añadido
+- **Notificaciones DM de Vencimiento VIP**:
+  - Implementación de la tarea programada `expiration_notifier_task` en `discord_bot` para notificar automáticamente por mensaje directo (DM) a los usuarios cuando su membresía VIP está a **3 días** o a **menos de 24 horas** de expirar.
+  - Gestión de rate limits de Discord (`asyncio.sleep(1)`) y captura controlada de `hikari.ForbiddenError` (usuarios con DMs cerrados) para garantizar estabilidad y continuidad de la tarea.
+- **Endpoints de Monitoreo de Membresías por Vencer**:
+  - `GET /api/v1/db/memberships/expiring`: Consulta las membresías activas en ventana de expiración (3 días y 24 horas) filtrando las ya notificadas.
+  - `POST /api/v1/db/memberships/{id}/mark_notified`: Marca atómicamente la notificación (`3d` o `24h`) enviada en base de datos.
+- **Migración de Base de Datos (Alembic)**:
+  - Migración `0132aeb12a1c_add_notified_columns_to_memberships.py` que agrega las columnas booleanas `notified_3d` y `notified_24h` (con default `False`) a la tabla `memberships`.
+
+### Corregido
+- **Resiliencia de Validación en Cliente API (`api_client.py`)**:
+  - Corrección de `ValidationError` de Pydantic en `get_player_by_steam` y `get_player_by_discord` mediante inyección defensiva de identificadores cuando el backend devuelve esquemas transicionales o incompletos.
+  - Prevención de fallos repetitivos en `vip_monitor`.
+- **Indexación de Tuplas en Estadísticas de Pelotones (`squads_service.py`)**:
+  - Corrección en el procesamiento de miembros retirados en el leaderboard interno, indexando correctamente las tuplas resultantes de SQLAlchemy (`row[0]`, `row[1]`, etc.) para prevenir errores de tipo `AttributeError`.
+- **Estandarización de Tests de Ciclo de Vida (`test_role_lifecycle_and_pricing.py`)**:
+  - Eliminación de argumentos duplicados de `price_usd` en la creación de instancias de prueba de `MembershipType`.
+  - 100% de la suite de pruebas validada (147 pruebas pasando).
+
+---
+
+## [1.6.0] - 2026-10-08
+
+### Añadido
+- **Sistema de Pelotones (Squads)**: Soporte completo para crear, gestionar y unirse a escuadrones a través de invitaciones y códigos en Discord (Comandos `/squad`).
+- **Sistema de Seeding y Recompensas Automatizadas**: Nuevo motor de recompensas que premia a los jugadores (1 punto por minuto) por poblar el servidor (Seeding) cuando la cantidad de jugadores activos está entre el mínimo y el máximo configurado, detectando estados de "limbo" y penalizando a quienes abandonan el servidor sin jugar antes de que se alcance la cuota.
+- **Auditoría de Clonado de Base de Datos**: Creación de herramientas para clonación de bases de datos seguras (`clone_prod_to_env.py`) ignorando esquemas heredados y obsoletos, permitiendo pruebas rigurosas en entornos de staging/dev.
+
+### Cambiado
+- **Desvinculación Completa de Tebex**: Limpieza a nivel base de datos, código y documentación (incluyendo remoción de variables de entorno, migraciones antiguas, endpoints y lógicas de reembolsos/disputas) para eliminar Tebex definitivamente.
+- **Esquema de Precios de Membresías**: Las membresías permanentes y el rol "VIP Seed" ahora soportan costo `$0` (nullable), quitando restricciones estrictas previas en `price_usd`.
+
+### Corregido
+- **Corrupción Aritmética de Puntos**: Se corrigió un error grave en `RewardsService` donde los puntos y logs insertaban literales de expresiones binarias (`BinaryExpression`) en vez de sus valores atómicos calculados, lo que envenenaba la base de datos de PostgreSQL.
+- **Gracia de Desconexiones (Seeding Grace Period)**: Se refinó y documentó la constante `SEEDING_FAILURE_GRACE_PERIOD_SECONDS` (90 segundos), consolidando los tiempos de gracia de desconexión sin castigos y limpiando números mágicos hardcodeados.
+- **Limpieza de Linting Crítico**: Se solucionaron múltiples excepciones "ciegas" (blind exceptions `try-except-pass`) y problemas en el uso de SQLAlchemy en todo el proyecto.
+- **Regresión en Cliente API del Bot**: Se resolvieron incompatibilidades de importación (`wardogs_schemas.v1` vs `dtos`) tras la refactorización del core, asegurando que todos los tests locales pasen al 100%.
+
+---
+
+## [1.5.3] - 2026-10-04
+### Añadido
+- **UI de Seeding**: Se agregó al comando `/rewards balance` en Discord el tiempo restante estimado ("Siguiente Punto En") calculado dinámicamente usando los minutos residuales de la sesión actual del jugador.
+
+---
+
+## [1.5.2] - 2026-10-04
+
+### Mejorado
+- **Estabilidad de Base de Datos (Pool)**: Se limitó el pool de conexiones asíncronas de SQLAlchemy (`pool_size=3`, `max_overflow=2`) para prevenir errores críticos de `TooManyConnectionsError` en entornos con bases de datos compartidas (ej. BisectHosting).
+- **Eficiencia en Integración Steam**: Agrupación (batching) de peticiones a la API de Steam durante la sincronización inicial, consolidando hasta 100 consultas individuales en 1 sola llamada para evitar penalizaciones temporales (HTTP 420 Rate Limit).
+
+### Corregido
+- **Migraciones Idempotentes**: Se actualizaron los scripts de Alembic (`2c236beea135`) utilizando bloques `DO $$` para evitar caídas catastróficas por `DuplicateObjectError` o violaciones de constraints preexistentes.
+- **Docker Context**: Se optimizó `.dockerignore` reduciendo radicalmente el tiempo de "build" bloqueando directorios pesados (`data/`, `backups/`).
+
+---
+
 ## [1.5.1] - 2026-10-04
 
 ### Corregido

@@ -1,7 +1,6 @@
 import html
 import logging
 from pathlib import Path
-from typing import Dict, Optional
 
 import httpx
 
@@ -24,8 +23,8 @@ class AuthPageService:
 
     @classmethod
     async def fetch_discord_profile(
-        cls, discord_id: str, discord_token: Optional[str]
-    ) -> Dict[str, Optional[str]]:
+        cls, discord_id: str, discord_token: str | None
+    ) -> dict[str, str | None]:
         result = {"username": None, "avatar_url": None}
         if not discord_token or not discord_id:
             return result
@@ -53,10 +52,10 @@ class AuthPageService:
     @classmethod
     def render_success_page(
         cls,
-        discord_name: Optional[str] = "",
-        discord_avatar: Optional[str] = "",
-        steam_name: Optional[str] = "",
-        steam_avatar: Optional[str] = "",
+        discord_name: str | None = "",
+        discord_avatar: str | None = "",
+        steam_name: str | None = "",
+        steam_avatar: str | None = "",
         already_linked: bool = False,
     ) -> str:
         return cls._render_template(
@@ -86,7 +85,7 @@ class AuthPageService:
         )
 
     @classmethod
-    def _render_template(cls, template_path: Path, replacements: Dict[str, str]) -> str:
+    def _render_template(cls, template_path: Path, replacements: dict[str, str]) -> str:
         content = cls._load_template(template_path)
         for placeholder, value in replacements.items():
             content = content.replace(placeholder, html.escape(value, quote=True))

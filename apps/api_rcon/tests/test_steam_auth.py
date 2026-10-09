@@ -1,12 +1,16 @@
-import pytest
-from unittest.mock import patch, AsyncMock, MagicMock
-from httpx import AsyncClient
-from urllib.parse import urlparse, parse_qs
-from sqlmodel.ext.asyncio.session import AsyncSession
+from unittest.mock import AsyncMock, MagicMock, patch
+from urllib.parse import parse_qs, urlparse
 
-from src.connections.databases.db import Player, BotConfig
-from src.security.tokens import generate_signed_payload_token, verify_signed_payload_token
+import pytest
+from httpx import AsyncClient
+from sqlmodel.ext.asyncio.session import AsyncSession
+from src.connections.databases.db import BotConfig, Player
+from src.security.tokens import (
+    generate_signed_payload_token,
+    verify_signed_payload_token,
+)
 from wardogs_schemas.steam_token import create_steam_link_token, verify_steam_link_token
+
 
 @pytest.mark.asyncio
 async def test_steam_token_creation_and_verification():

@@ -1,8 +1,7 @@
 import pytest
 from httpx import AsyncClient
 from sqlmodel.ext.asyncio.session import AsyncSession
-
-from src.connections.databases.db import Player, Role, RoleType, PlayerRole
+from src.connections.databases.db import Player, PlayerRole, Role, RoleType
 
 
 @pytest.mark.asyncio

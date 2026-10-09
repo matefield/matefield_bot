@@ -1,14 +1,15 @@
-from typing import Any, Dict, List, Optional
+from typing import Any
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from src.security.guard import verify_api_key_guard
-from src.connections.databases.db import get_session, Role
+from src.connections.databases.db import Role, get_session
 from src.modules.v1.schemas.dtos import (
     CreateMembershipTypeRequest,
     UpdateMembershipTypeRequest,
 )
 from src.modules.v1.services.membership_types_service import MembershipTypesService
+from src.security.guard import verify_api_key_guard
 
 router = APIRouter(prefix="/membership-types", tags=["Membership Types"])
 
@@ -17,7 +18,7 @@ router = APIRouter(prefix="/membership-types", tags=["Membership Types"])
 async def list_membership_types(
     active_only: bool = False,
     session: AsyncSession = Depends(get_session)
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     return await MembershipTypesService.list_types(session, active_only=active_only)
 
 
@@ -25,7 +26,7 @@ async def list_membership_types(
 async def create_membership_type(
     req: CreateMembershipTypeRequest,
     session: AsyncSession = Depends(get_session)
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     return await MembershipTypesService.create_type(req, session)
 
 
@@ -33,7 +34,7 @@ async def create_membership_type(
 async def get_membership_type(
     identifier: str,
     session: AsyncSession = Depends(get_session)
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     m_type = await MembershipTypesService.get_type(identifier, session)
     if not m_type:
         raise HTTPException(status_code=404, detail="Tipo de membresía no encontrado")
@@ -43,7 +44,7 @@ async def get_membership_type(
         "code": m_type.code,
         "name": m_type.name,
         "description": m_type.description,
-        "price_usd": m_type.price_usd,
+        "price_usd": round(m_type.price_usd / 100.0, 2),
         "billing_type": m_type.billing_type,
         "default_days": m_type.default_days,
         "max_quota": m_type.max_quota,
@@ -62,7 +63,7 @@ async def update_membership_type(
     type_id: int,
     req: UpdateMembershipTypeRequest,
     session: AsyncSession = Depends(get_session)
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     return await MembershipTypesService.update_type(type_id, req, session)
 
 
@@ -70,5 +71,5 @@ async def update_membership_type(
 async def delete_membership_type(
     type_id: int,
     session: AsyncSession = Depends(get_session)
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     return await MembershipTypesService.delete_type(type_id, session)

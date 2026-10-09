@@ -1,12 +1,10 @@
 import asyncio
+import logging
 import re
+import time
 
 import crescent
 import hikari
-import time
-import csv
-import io
-import logging
 
 logger = logging.getLogger("wardogs.admin")
 
@@ -15,7 +13,7 @@ from src.model import Model
 from src.trace import get_tracer
 
 plugin = crescent.Plugin[hikari.GatewayBot, Model]()
-from src.groups import reserved_group, server_group, quota_group, hacker_group
+from src.groups import hacker_group, quota_group, reserved_group, server_group
 
 # UI Theme Colors and Message Limits
 COLOR_BLUE = 0x3498DB
@@ -55,9 +53,9 @@ class ReservedSlotsList:
             db_players = dict(zip(slots, db_players_list))
             
             async def resolve_discord_username(db_player_info):
-                if not db_player_info or not db_player_info.get("discord_id"):
+                if not db_player_info or not db_player_info.discord_id:
                     return "Desconocido"
-                discord_id = int(db_player_info.get("discord_id"))
+                discord_id = int(db_player_info.discord_id)
                 
                 # Check cache primero (0 costo)
                 bot_app = getattr(ctx, "app", None) or plugin.app
@@ -375,7 +373,7 @@ async def _resolve_ban_targets(
             db_check = await plugin.model.api.get_player_by_discord(clean)
             if db_check:
                 target_discord_id = int(clean)
-                target_steam_id = db_check.get("steam_id")
+                target_steam_id = db_check.steam_id
             else:
                 target_steam_id = clean
         else:
@@ -384,13 +382,13 @@ async def _resolve_ban_targets(
     # Cross-resolve if one is missing
     if target_discord_id and not target_steam_id:
         db_player = await plugin.model.api.get_player_by_discord(str(target_discord_id))
-        if db_player and db_player.get("steam_id"):
-            target_steam_id = str(db_player["steam_id"])
+        if db_player and db_player.steam_id:
+            target_steam_id = str(db_player.steam_id)
             
     if target_steam_id and not target_discord_id:
         db_player = await plugin.model.api.get_player_by_steam(target_steam_id)
-        if db_player and db_player.get("discord_id"):
-            target_discord_id = int(db_player["discord_id"])
+        if db_player and db_player.discord_id:
+            target_discord_id = int(db_player.discord_id)
             
     return target_discord_id, target_steam_id
 

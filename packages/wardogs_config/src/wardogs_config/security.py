@@ -1,5 +1,6 @@
-from typing import Optional
+
 import pydantic
+
 from wardogs_config.base import BaseAppConfig
 
 
@@ -19,50 +20,41 @@ class SecuritySettings(BaseAppConfig):
     )
 
     # --- Discord integration ---
-    DISCORD_TOKEN: Optional[str] = pydantic.Field(
+    DISCORD_TOKEN: str | None = pydantic.Field(
         default=None,
         validation_alias="DISCORD_TOKEN",
         description="Discord bot token for immediate post-link role assignment",
     )
-    DISCORD_GUILD_ID: Optional[str] = pydantic.Field(
+    DISCORD_GUILD_ID: str | None = pydantic.Field(
         default=None,
         validation_alias="DISCORD_GUILD_ID",
         description="Target Discord guild/server ID",
     )
-    DISCORD_CLIENT_ID: Optional[str] = pydantic.Field(
+    DISCORD_CLIENT_ID: str | None = pydantic.Field(
         default=None,
         validation_alias="DISCORD_CLIENT_ID",
         description="Discord OAuth2 application client ID",
     )
-    DISCORD_CLIENT_SECRET: Optional[str] = pydantic.Field(
+    DISCORD_CLIENT_SECRET: str | None = pydantic.Field(
         default=None,
         validation_alias="DISCORD_CLIENT_SECRET",
         description="Discord OAuth2 application client secret",
     )
-    DISCORD_REDIRECT_URI: Optional[str] = pydantic.Field(
+    DISCORD_REDIRECT_URI: str | None = pydantic.Field(
         default=None,
         validation_alias="DISCORD_REDIRECT_URI",
         description="Discord OAuth2 redirect URI",
     )
-    ADMIN_SESSION_SECRET: Optional[str] = pydantic.Field(
+    ADMIN_SESSION_SECRET: str | None = pydantic.Field(
         default=None,
         validation_alias="ADMIN_SESSION_SECRET",
         description="Secret key to sign admin session tokens (falls back to API_KEY)",
     )
 
     # --- External Services ---
-    STEAM_WEB_API_KEY: Optional[str] = pydantic.Field(
+    STEAM_WEB_API_KEY: str | None = pydantic.Field(
         default=None,
         validation_alias="STEAM_WEB_API_KEY",
         description="Valve Steam Web API Key",
     )
-    TEBEX_WEBHOOK_SECRET: Optional[str] = pydantic.Field(
-        default=None,
-        validation_alias="TEBEX_WEBHOOK_SECRET",
-        description="Secret key for verifying Tebex webhook signatures",
-    )
-    TEBEX_API_KEY: Optional[str] = pydantic.Field(
-        default=None,
-        validation_alias="TEBEX_API_KEY",
-        description="API Key for Tebex API integration",
-    )
+

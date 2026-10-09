@@ -10,14 +10,15 @@ Implementa el patrón Observer combinado con el patrón Null Object:
 """
 from __future__ import annotations
 
-import time
 import logging
+import time
 from abc import ABC, abstractmethod
+from collections.abc import Generator
 from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import Any, Dict, Generator, List, Optional
-import hikari
+from typing import Any
 
+import hikari
 from wardogs_config import BOT_SETTINGS
 
 logger = logging.getLogger("wardogs.trace")
@@ -30,10 +31,10 @@ class TraceEvent:
     category: str = "SYS"  # DB, DISCORD, RCON, STEAM, CACHE, CONFIG, SYS
     action: str = "EXEC"   # FETCH, CREATE, UPDATE, DELETE, SYNC, EXEC, VALIDATE
     status: str = "OK"     # OK, WARN, ERROR, SKIP
-    details: Optional[str] = None
-    target: Optional[str] = None
+    details: str | None = None
+    target: str | None = None
     duration_ms: float = 0.0
-    error: Optional[str] = None
+    error: str | None = None
 
     @property
     def status_emoji(self) -> str:
@@ -55,13 +56,12 @@ class TraceObserver(ABC):
     @abstractmethod
     def on_event(self, event: TraceEvent) -> None:
         """Notificado cuando ocurre un evento de traza."""
-        pass
 
 
 class EventCollectorObserver(TraceObserver):
     """Observador que acumula eventos y calcula métricas agregadas."""
     def __init__(self) -> None:
-        self.events: List[TraceEvent] = []
+        self.events: list[TraceEvent] = []
         self._start_time: float = time.perf_counter()
 
     def on_event(self, event: TraceEvent) -> None:
@@ -76,10 +76,10 @@ class EventCollectorObserver(TraceObserver):
         if not self.events:
             return "ℹ️ *No se registraron pasos de ejecución.*"
 
-        lines: List[str] = []
+        lines: list[str] = []
         for ev in self.events:
             line = f"• {ev.status_emoji} `[{ev.category}:{ev.action}]` {ev.step} *({ev.duration_ms:.1f}ms)*"
-            sub_details: List[str] = []
+            sub_details: list[str] = []
             if ev.target:
                 sub_details.append(f"Target: `{ev.target}`")
             if ev.details:
@@ -107,10 +107,10 @@ class ITracer(ABC):
         category: str = "SYS",
         action: str = "EXEC",
         status: str = "OK",
-        details: Optional[str] = None,
-        target: Optional[str] = None,
+        details: str | None = None,
+        target: str | None = None,
         duration_ms: float = 0.0,
-        error: Optional[str] = None,
+        error: str | None = None,
     ) -> None:
         pass
 
@@ -121,19 +121,17 @@ class ITracer(ABC):
         step: str,
         category: str = "SYS",
         action: str = "EXEC",
-        target: Optional[str] = None,
-    ) -> Generator[Dict[str, Any], None, None]:
+        target: str | None = None,
+    ) -> Generator[dict[str, Any]]:
         pass
 
     @abstractmethod
     def attach_to_embed(self, embed: hikari.Embed) -> hikari.Embed:
         """Agrega el bloque de diagnóstico a un Embed de Discord (No-op en producción)."""
-        pass
 
     @abstractmethod
     def append_to_message(self, message: str) -> str:
         """Agrega el reporte de diagnóstico al final de un mensaje de texto (No-op en producción)."""
-        pass
 
 
 class NullTracer(ITracer):
@@ -147,10 +145,10 @@ class NullTracer(ITracer):
         category: str = "SYS",
         action: str = "EXEC",
         status: str = "OK",
-        details: Optional[str] = None,
-        target: Optional[str] = None,
+        details: str | None = None,
+        target: str | None = None,
         duration_ms: float = 0.0,
-        error: Optional[str] = None,
+        error: str | None = None,
     ) -> None:
         pass
 
@@ -160,9 +158,9 @@ class NullTracer(ITracer):
         step: str,
         category: str = "SYS",
         action: str = "EXEC",
-        target: Optional[str] = None,
-    ) -> Generator[Dict[str, Any], None, None]:
-        dummy_ctx: Dict[str, Any] = {}
+        target: str | None = None,
+    ) -> Generator[dict[str, Any]]:
+        dummy_ctx: dict[str, Any] = {}
         yield dummy_ctx
 
     def attach_to_embed(self, embed: hikari.Embed) -> hikari.Embed:
@@ -177,9 +175,9 @@ class DevActionTracer(ITracer):
     Observer Pattern: Implementación para DESARROLLO.
     Recopila métricas, acciones y cambios en tiempo real.
     """
-    def __init__(self, observers: Optional[List[TraceObserver]] = None) -> None:
+    def __init__(self, observers: list[TraceObserver] | None = None) -> None:
         self.collector = EventCollectorObserver()
-        self.observers: List[TraceObserver] = observers or [self.collector]
+        self.observers: list[TraceObserver] = observers or [self.collector]
 
     def add_observer(self, observer: TraceObserver) -> None:
         self.observers.append(observer)
@@ -190,10 +188,10 @@ class DevActionTracer(ITracer):
         category: str = "SYS",
         action: str = "EXEC",
         status: str = "OK",
-        details: Optional[str] = None,
-        target: Optional[str] = None,
+        details: str | None = None,
+        target: str | None = None,
         duration_ms: float = 0.0,
-        error: Optional[str] = None,
+        error: str | None = None,
     ) -> None:
         event = TraceEvent(
             step=step,
@@ -217,10 +215,10 @@ class DevActionTracer(ITracer):
         step: str,
         category: str = "SYS",
         action: str = "EXEC",
-        target: Optional[str] = None,
-    ) -> Generator[Dict[str, Any], None, None]:
+        target: str | None = None,
+    ) -> Generator[dict[str, Any]]:
         start = time.perf_counter()
-        ctx: Dict[str, Any] = {"status": "OK", "details": None, "target": target, "error": None}
+        ctx: dict[str, Any] = {"status": "OK", "details": None, "target": target, "error": None}
         try:
             yield ctx
         except Exception as exc:
@@ -269,7 +267,7 @@ class DevActionTracer(ITracer):
 # Factory Method
 # ============================================================================
 
-def get_tracer(force_dev: Optional[bool] = None) -> ITracer:
+def get_tracer(force_dev: bool | None = None) -> ITracer:
     """
     Factory que retorna DevActionTracer en entornos de desarrollo,
     o NullTracer (cero overhead) en producción.

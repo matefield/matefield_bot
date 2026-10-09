@@ -1,19 +1,19 @@
-import pytest
+from datetime import UTC, datetime
 from pathlib import Path
-from datetime import datetime, timezone
+
+import pytest
+from sqlalchemy.ext.asyncio import create_async_engine
 from sqlmodel import SQLModel
 from sqlmodel.ext.asyncio.session import AsyncSession
-from sqlalchemy.ext.asyncio import create_async_engine
-
-from src.connections.databases.db import Player, Membership, Role
+from src.connections.databases.db import Membership, Player, Role
 from src.modules.v1.services.backup_service import (
-    create_database_sql_backup,
-    cleanup_old_backups,
     _escape_sql_value,
+    cleanup_old_backups,
+    create_database_sql_backup,
 )
 from src.modules.v1.services.export_service import (
-    generate_memberships_csv,
     generate_export_download_token,
+    generate_memberships_csv,
     verify_export_download_token,
 )
 
@@ -59,9 +59,9 @@ async def test_sql_backup_and_csv_export(tmp_path: Path):
         session.add(r_founder)
         await session.commit()
 
-        t0 = datetime(2025, 1, 1, tzinfo=timezone.utc)
-        t1 = datetime(2025, 3, 1, tzinfo=timezone.utc)
-        t2 = datetime(2025, 5, 1, tzinfo=timezone.utc)
+        t0 = datetime(2025, 1, 1, tzinfo=UTC)
+        t1 = datetime(2025, 3, 1, tzinfo=UTC)
+        t2 = datetime(2025, 5, 1, tzinfo=UTC)
 
         m_old = Membership(steam_id=s1, membership_type="VIP_COMUN", start_time=t0, is_active=False)
         m_founder = Membership(steam_id=s1, membership_type="VIP_COMUN", start_time=t1, is_booster=True, special_role_id=2, is_active=False)

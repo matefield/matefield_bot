@@ -1,12 +1,11 @@
-from typing import Any, Dict, Optional
 from fastapi import APIRouter, Depends
 from sqlmodel.ext.asyncio.session import AsyncSession
 from wardogs_schemas import v1 as schemas
 
-from src.security.guard import verify_api_key_guard
 from src.connections.databases.db import get_session
-from src.modules.v1.schemas.dtos import SetBotConfigRequest, QuotaUpdateRequest
+from src.modules.v1.schemas.dtos import QuotaUpdateRequest, SetBotConfigRequest
 from src.modules.v1.services.config_service import ConfigService
+from src.security.guard import verify_api_key_guard
 
 router = APIRouter(tags=["Config & Quotas"])
 

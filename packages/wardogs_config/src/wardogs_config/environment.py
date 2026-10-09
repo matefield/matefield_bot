@@ -1,9 +1,10 @@
-from typing import Optional
+
 import pydantic
+
 from wardogs_config.base import BaseAppConfig
-from wardogs_config.security import SecuritySettings
-from wardogs_config.connections import ConnectionSettings
 from wardogs_config.bot import DiscordBotSettings
+from wardogs_config.connections import ConnectionSettings
+from wardogs_config.security import SecuritySettings
 
 
 class EnvironmentSettings(BaseAppConfig):
@@ -31,7 +32,7 @@ ENVIRONMENT_SETTINGS = EnvironmentSettings()
 BOT_SETTINGS = DiscordBotSettings()
 
 
-def is_prod(settings: Optional[EnvironmentSettings] = None) -> bool:
+def is_prod(settings: EnvironmentSettings | None = None) -> bool:
     """Returns True if the current application environment is production."""
     target = settings or ENVIRONMENT_SETTINGS
     return target.APP_ENV.strip().lower() == "production"

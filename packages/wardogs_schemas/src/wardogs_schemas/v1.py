@@ -191,36 +191,3 @@ class SponsorRequest(BaseModel):
 
 
 
-from wardogs_schemas.dtos import (
-    ConfigUpdateRequest,
-    LinkAccountRequest,
-    UnlinkAccountRequest,
-    EditPlayerRequest,
-    AddMembershipRequest,
-    EditMembershipRequest,
-    CompensateRequest,
-    SetBotConfigRequest,
-    QuotaUpdateRequest,
-    RoleRegisterRequest,
-    CreateRconServerRequest,
-    UpdateRconServerRequest,
-    CreateMembershipTypeRequest,
-    UpdateMembershipTypeRequest,
-    MembershipTypeItem,
-    MembershipTypeActionResponse,
-    RconServerItem,
-    RconServerActionResponse,
-    RconServerTestResponse,
-    RconServerSyncResultItem,
-    RconServersSyncAllResponse,
-    ExportMembershipsResponse,
-    CreateRewardItemRequest,
-    ClaimRewardRequest,
-    DeliverClaimRequest,
-    RefundClaimRequest,
-    GiveRewardPointsRequest,
-    RewardItemResponse,
-    RewardClaimResponse,
-    PlayerRewardBalanceResponse,
-)
-

@@ -1,22 +1,23 @@
 from __future__ import annotations
-from typing import List, Dict, Any, Optional, Union
-from datetime import datetime, timezone
-from sqlmodel import select, func, col
-from sqlmodel.ext.asyncio.session import AsyncSession
-from fastapi import HTTPException
 
-from src.connections.databases.db import MembershipType, Membership, RconServer, Role
+from datetime import UTC, datetime
+from typing import Any
+
+from fastapi import HTTPException
+from sqlmodel import col, func, select
+from sqlmodel.ext.asyncio.session import AsyncSession
+
+from src.connections.databases.db import Membership, MembershipType, RconServer, Role
 from src.modules.v1.schemas.dtos import (
     CreateMembershipTypeRequest,
     UpdateMembershipTypeRequest,
-    MembershipTypeItem,
 )
 
 
 class MembershipTypesService:
 
     @staticmethod
-    async def list_types(session: AsyncSession, active_only: bool = False) -> List[Dict[str, Any]]:
+    async def list_types(session: AsyncSession, active_only: bool = False) -> list[dict[str, Any]]:
         # Ensure default types exist if table is fresh
         await MembershipTypesService._ensure_defaults(session)
 
@@ -34,7 +35,7 @@ class MembershipTypesService:
             .group_by(Membership.membership_type)
         )
         usage_rows = (await session.exec(usage_stmt)).all()
-        usage_map: Dict[str, int] = {}
+        usage_map: dict[str, int] = {}
         for m_type, count in usage_rows:
             if m_type:
                 u = m_type.upper()
@@ -44,7 +45,7 @@ class MembershipTypesService:
 
         # Resolve server names
         server_ids = [t.server_id for t in types if t.server_id is not None]
-        server_names: Dict[int, str] = {}
+        server_names: dict[int, str] = {}
         if server_ids:
             servers_stmt = select(RconServer).where(col(RconServer.id).in_(server_ids))
             servers = (await session.exec(servers_stmt)).all()
@@ -52,8 +53,8 @@ class MembershipTypesService:
 
         # Resolve role names and discord_role_ids
         role_ids = [t.role_id for t in types if t.role_id is not None]
-        role_names: Dict[int, str] = {}
-        role_discord_ids: Dict[int, str] = {}
+        role_names: dict[int, str] = {}
+        role_discord_ids: dict[int, str] = {}
         if role_ids:
             roles_stmt = select(Role).where(col(Role.id).in_(role_ids))
             roles = (await session.exec(roles_stmt)).all()
@@ -85,7 +86,7 @@ class MembershipTypesService:
         return result
 
     @staticmethod
-    async def get_type(identifier: Union[int, str], session: AsyncSession) -> Optional[MembershipType]:
+    async def get_type(identifier: int | str, session: AsyncSession) -> MembershipType | None:
         if isinstance(identifier, int) or (isinstance(identifier, str) and identifier.isdigit()):
             return await session.get(MembershipType, int(identifier))
         code = str(identifier).strip().upper()
@@ -93,7 +94,7 @@ class MembershipTypesService:
         return (await session.exec(stmt)).first()
 
     @staticmethod
-    async def create_type(req: CreateMembershipTypeRequest, session: AsyncSession) -> Dict[str, Any]:
+    async def create_type(req: CreateMembershipTypeRequest, session: AsyncSession) -> dict[str, Any]:
         normalized_code = req.code.strip().upper()
 
         existing = (await session.exec(
@@ -137,7 +138,7 @@ class MembershipTypesService:
 
         price_usd_cents = max(0, int(float(req.price_usd) * 100))
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         m_type = MembershipType(
             code=normalized_code,
             name=req.name.strip(),
@@ -180,7 +181,7 @@ class MembershipTypesService:
         }
 
     @staticmethod
-    async def update_type(type_id: int, req: UpdateMembershipTypeRequest, session: AsyncSession) -> Dict[str, Any]:
+    async def update_type(type_id: int, req: UpdateMembershipTypeRequest, session: AsyncSession) -> dict[str, Any]:
         m_type = await session.get(MembershipType, type_id)
         if not m_type:
             raise HTTPException(status_code=404, detail="Tipo de membresía no encontrado")
@@ -237,7 +238,7 @@ class MembershipTypesService:
         if req.is_active is not None:
             m_type.is_active = req.is_active
 
-        m_type.updated_at = datetime.now(timezone.utc)
+        m_type.updated_at = datetime.now(UTC)
         session.add(m_type)
         await session.commit()
         await session.refresh(m_type)
@@ -267,14 +268,14 @@ class MembershipTypesService:
         }
 
     @staticmethod
-    async def delete_type(type_id: int, session: AsyncSession) -> Dict[str, Any]:
+    async def delete_type(type_id: int, session: AsyncSession) -> dict[str, Any]:
         m_type = await session.get(MembershipType, type_id)
         if not m_type:
             raise HTTPException(status_code=404, detail="Tipo de membresía no encontrado")
 
         # Soft delete
         m_type.is_active = False
-        m_type.updated_at = datetime.now(timezone.utc)
+        m_type.updated_at = datetime.now(UTC)
         session.add(m_type)
         await session.commit()
 
@@ -294,7 +295,7 @@ class MembershipTypesService:
                 ("VIP_PERMANENTE", "VIP Permanente", "Membresía vitalicia sin expiración", 0.0, 0, roles_by_code.get("VIP_PERMANENTE")),
             ]
 
-            now = datetime.now(timezone.utc)
+            now = datetime.now(UTC)
             for code, name, desc, price, days, r_id in defaults:
                 session.add(MembershipType(
                     code=code,
