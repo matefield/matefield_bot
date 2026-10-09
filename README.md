@@ -113,7 +113,8 @@ en `MEMBERSHIP_POSTGRES_TEST_URL`. Luego ejecutá:
 uv run pytest apps/api_rcon/tests/test_membership_concurrency_postgres.py
 ```
 
-Estas pruebas comprueban los bloqueos del último cupo y el orden de las entregas;
+Estas pruebas comprueban los bloqueos del último cupo, el orden de las entregas
+y la exclusión mutua entre desasignaciones, altas y configuraciones de roles;
 usan Warcon simulado y crean y eliminan tablas solamente en esa base temporal.
 
 ## Motor de Sincronización Automática (Multi-Server Polling)
@@ -139,6 +140,22 @@ con `{ "discord_role_id": "...", "actor_id": "..." }`, autenticado por `X-API-Ke
 membresía, no se asignan roles existentes y no se llama a Warcon al configurar.
 Cambiar a otro rol se rechaza mientras haya membresías vigentes que lo otorgan;
 una migración de usuarios requiere una operación explícita.
+
+`DELETE` en esa misma ruta, con `{ "actor_id": "..." }`, elimina el vínculo del
+servidor indicado y devuelve `MembershipRoleUnassignment`. La respuesta identifica
+el tipo y rol lógico, el administrador, `changed` y el `discord_role_id` anterior
+(`null` si el vínculo ya estaba ausente). La operación es idempotente y acepta
+limpiar un tipo desactivado. Solo elimina `RoleDiscordBinding`; conserva membresías,
+roles de usuarios, IDs globales y Warcon. La auditoría se registra después del commit.
+
+Una baja que modificaría un vínculo devuelve `409` con
+`detail.code=membership_role_in_use` si hay membresías vigentes que usan el rol
+lógico, o `membership_role_shared` si otro tipo comparte ese rol lógico. La
+comprobación de vigencia es global, igual que al cambiar el vínculo. Se usa el
+mismo bloqueo de `Role` que en configuración y alta para evitar carreras. Un vínculo
+ya ausente devuelve `changed=false` sin modificar datos, incluso si el rol se usa
+en otro servidor. Laracord expone esta operación mediante
+`/memberships unassign-role`, valida Administrador y traduce los resultados.
 
 Las altas y los listados de Laracord envían `guild_id`. El listado valida que el
 servidor esté habilitado y muestra los roles vinculados a ese servidor. La API
