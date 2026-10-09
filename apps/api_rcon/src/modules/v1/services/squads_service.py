@@ -72,7 +72,7 @@ class SquadsService:
         
         squad_ids = [m.squad_id for m in members]
         squads = (await session.exec(select(Squad).where(col(Squad.id).in_(squad_ids)))).all()
-        return squads
+        return list(squads)
 
     @staticmethod
     async def get_squad_members(squad_id: str, session: AsyncSession) -> list[Player]:
@@ -83,7 +83,7 @@ class SquadsService:
             
         steam_ids = [m.steam_id for m in members]
         players = (await session.exec(select(Player).where(col(Player.steam_id).in_(steam_ids)))).all()
-        return players
+        return list(players)
 
     @staticmethod
     async def add_member(squad_id: str, steam_id: str, session: AsyncSession) -> SquadMember:
@@ -138,9 +138,9 @@ class SquadsService:
         elif sort_by == "matches":
             order_col = col(Squad.total_matches_played).desc()
             
-        return (await session.exec(
+        return list((await session.exec(
             select(Squad).order_by(order_col).limit(limit)
-        )).all()
+        )).all())
 
     @staticmethod
     async def get_squad_internal_leaderboard(squad_id: str, sort_by: str, session: AsyncSession) -> list[dict[str, Any]]:
@@ -164,7 +164,7 @@ class SquadsService:
         )
         
         stats_rows = (await session.exec(query)).all()
-        stats_map = {row.steam_id: row for row in stats_rows}
+        stats_map = {row[0]: row for row in stats_rows}
         
         results = []
         for m in members:
@@ -172,24 +172,25 @@ class SquadsService:
             results.append({
                 "steam_id": m.steam_id,
                 "in_game_name": m.in_game_name,
-                "kills": getattr(st, "total_kills", 0) or 0,
-                "deaths": getattr(st, "total_deaths", 0) or 0,
-                "cash": getattr(st, "total_cash_earned", 0) or 0
+                "kills": st[1] if st else 0,
+                "deaths": st[2] if st else 0,
+                "cash": st[3] if st else 0
             })
             
         # Add ex-members that are not in the squad anymore but have stats
         current_member_ids = {m.steam_id for m in members}
         for row in stats_rows:
-            if row.steam_id not in current_member_ids:
+            steam_id = row[0]
+            if steam_id not in current_member_ids:
                 # Fetch their name from the DB
-                ex_player = await session.get(Player, row.steam_id)
+                ex_player = await session.get(Player, steam_id)
                 name = ex_player.in_game_name if ex_player else "Ex-Miembro"
                 results.append({
-                    "steam_id": row.steam_id,
+                    "steam_id": steam_id,
                     "in_game_name": f"{name} (Retirado)",
-                    "kills": row.total_kills or 0,
-                    "deaths": row.total_deaths or 0,
-                    "cash": row.total_cash_earned or 0
+                    "kills": row[1] or 0,
+                    "deaths": row[2] or 0,
+                    "cash": row[3] or 0
                 })
             
         if sort_by == "deaths":

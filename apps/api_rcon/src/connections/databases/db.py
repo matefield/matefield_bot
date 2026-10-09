@@ -83,6 +83,8 @@ class Membership(SQLModel, table=True):
     rcon_sync_status: str = Field(default="PENDING", sa_column_kwargs={"server_default": "PENDING"}) # PENDING, SUCCESS, FAILED
     server_id: int | None = Field(default=None, foreign_key="rcon_servers.id")
     payment_source: str = Field(default="MANUAL", sa_column_kwargs={"server_default": "MANUAL"}) # MANUAL, REWARDS
+    notified_3d: bool = Field(default=False, sa_column_kwargs={"server_default": "false"})
+    notified_24h: bool = Field(default=False, sa_column_kwargs={"server_default": "false"})
     # Relationships
     player: Player = Relationship(back_populates="memberships")
     role_granted: Role | None = Relationship(sa_relationship_kwargs={"foreign_keys": "[Membership.role_granted_id]"})

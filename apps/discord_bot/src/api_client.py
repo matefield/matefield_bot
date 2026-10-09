@@ -111,6 +111,8 @@ class APIClient:
     async def get_player_by_discord(self, discord_id: str) -> schemas.PlayerResponse | None:
         try:
             res = await self._request("GET", f"/api/v1/db/players/discord/{discord_id}")
+            if isinstance(res, dict) and "discord_id" not in res:
+                res["discord_id"] = discord_id
             return schemas.PlayerResponse(**res)
         except Exception as e:
             if "HTTP 404" in str(e):
@@ -120,6 +122,8 @@ class APIClient:
     async def get_player_by_steam(self, steam_id: str) -> schemas.PlayerResponse | None:
         try:
             res = await self._request("GET", f"/api/v1/db/players/steam/{steam_id}")
+            if isinstance(res, dict) and "steam_id" not in res:
+                res["steam_id"] = steam_id
             return schemas.PlayerResponse(**res)
         except Exception as e:
             if "HTTP 404" in str(e):
@@ -452,3 +456,8 @@ class APIClient:
 
     async def disband_squad(self, squad_id: str) -> dict[str, Any]:
         return await self._request("DELETE", f"/api/v1/db/squads/{squad_id}")
+    async def get_expiring_memberships(self) -> dict[str, Any]:
+        return await self._request("GET", "/api/v1/db/memberships/expiring")
+        
+    async def mark_membership_notified(self, membership_id: int, notification_type: str) -> dict[str, Any]:
+        return await self._request("POST", f"/api/v1/db/memberships/{membership_id}/mark_notified?notification_type={notification_type}")

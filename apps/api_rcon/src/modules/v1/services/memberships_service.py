@@ -657,3 +657,65 @@ class MembershipsService:
             "pending_add": pending_add,
             "pending_remove": pending_remove
         }
+    @staticmethod
+    async def get_expiring_memberships(session: AsyncSession) -> dict[str, list[dict[str, Any]]]:
+        now = datetime.now(UTC)
+        three_days_from_now = now + timedelta(days=3)
+        one_day_from_now = now + timedelta(hours=24)
+        
+        # We need players with active memberships where end_time is not None, and either:
+        # (end_time <= three_days_from_now and not notified_3d)
+        # OR
+        # (end_time <= one_day_from_now and not notified_24h)
+        
+        stmt = select(Membership, Player.discord_id).join(Player).where(
+            Membership.is_active == True,
+            Membership.end_time != None,
+            or_(
+                (Membership.end_time <= three_days_from_now) & (Membership.notified_3d == False),
+                (Membership.end_time <= one_day_from_now) & (Membership.notified_24h == False)
+            )
+        )
+        
+        results = await session.execute(stmt)
+        
+        expiring_3d = []
+        expiring_24h = []
+        
+        for membership, discord_id in results:
+            if not discord_id:
+                continue
+                
+            mem_dict = {
+                "id": membership.id,
+                "steam_id": membership.steam_id,
+                "discord_id": discord_id,
+                "type": membership.membership_type,
+                "end_time": membership.end_time.isoformat() if membership.end_time else None
+            }
+            
+            # Check 24h first because it's more urgent
+            if membership.end_time <= one_day_from_now and not membership.notified_24h:
+                expiring_24h.append(mem_dict)
+            elif membership.end_time <= three_days_from_now and not membership.notified_3d:
+                expiring_3d.append(mem_dict)
+                
+        return {
+            "expiring_3d": expiring_3d,
+            "expiring_24h": expiring_24h
+        }
+
+    @staticmethod
+    async def mark_membership_notified(membership_id: int, notification_type: str, session: AsyncSession) -> bool:
+        membership = (await session.exec(select(Membership).where(Membership.id == membership_id))).first()
+        if not membership:
+            return False
+            
+        if notification_type == "3d":
+            membership.notified_3d = True
+        elif notification_type == "24h":
+            membership.notified_24h = True
+            
+        session.add(membership)
+        await session.commit()
+        return True

@@ -102,3 +102,15 @@ async def download_memberships_export_endpoint(
         media_type="text/csv",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'}
     )
+@router.get("/db/memberships/expiring", dependencies=[Depends(verify_api_key_guard)])
+async def get_expiring_memberships(session: AsyncSession = Depends(get_session)):
+    return await MembershipsService.get_expiring_memberships(session)
+
+@router.post("/db/memberships/{membership_id}/mark_notified", dependencies=[Depends(verify_api_key_guard)])
+async def mark_membership_notified(membership_id: int, notification_type: str, session: AsyncSession = Depends(get_session)):
+    if notification_type not in ["3d", "24h"]:
+        raise HTTPException(status_code=400, detail="Invalid notification_type")
+    success = await MembershipsService.mark_membership_notified(membership_id, notification_type, session)
+    if not success:
+        raise HTTPException(status_code=404, detail="Membership not found")
+    return {"ok": True}
