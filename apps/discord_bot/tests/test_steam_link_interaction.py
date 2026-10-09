@@ -4,7 +4,7 @@ from urllib.parse import parse_qs, urlparse
 import hikari
 import pytest
 from src.plugins import account
-from wardogs_schemas import v1 as schemas
+from wardogs_schemas import dtos as schemas
 from wardogs_schemas.steam_token import verify_steam_link_token
 
 A, B = 123456789012345678, 223456789012345678

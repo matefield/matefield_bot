@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from src.api_client import APIClient
 from src.plugins.memberships import build_player_memberships_view
-from wardogs_schemas import v1 as schemas
+from wardogs_schemas import dtos as schemas
 
 
 def test_build_player_memberships_view_all_fields():

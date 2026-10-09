@@ -3,7 +3,8 @@ import logging
 from typing import Any
 
 import aiohttp
-from wardogs_schemas import v1 as schemas
+from wardogs_schemas import dtos as schemas
+from wardogs_schemas import v1 as rcon_schemas
 
 logger = logging.getLogger(__name__)
 
@@ -61,22 +62,22 @@ class APIClient:
                 await asyncio.sleep(wait_time)
 
     # RCON wrapped endpoints
-    async def get_status(self) -> schemas.Status:
+    async def get_status(self) -> rcon_schemas.Status:
         data = await self._request("GET", "/api/v1/status")
-        return schemas.Status.model_validate(data)
+        return rcon_schemas.Status.model_validate(data)
 
-    async def get_players(self) -> schemas.Players1:
+    async def get_players(self) -> rcon_schemas.Players1:
         data = await self._request("GET", "/api/v1/players")
-        return schemas.Players1.model_validate(data)
+        return rcon_schemas.Players1.model_validate(data)
 
 
-    async def get_audit_logs(self, limit: int = 50) -> schemas.Audit:
+    async def get_audit_logs(self, limit: int = 50) -> rcon_schemas.Audit:
         data = await self._request("GET", f"/api/v1/audit?limit={limit}")
-        return schemas.Audit.model_validate(data)
+        return rcon_schemas.Audit.model_validate(data)
 
-    async def get_reserved_slots(self) -> schemas.ReservedSlots:
+    async def get_reserved_slots(self) -> rcon_schemas.ReservedSlots:
         data = await self._request("GET", "/api/v1/reserved-slots")
-        return schemas.ReservedSlots.model_validate(data)
+        return rcon_schemas.ReservedSlots.model_validate(data)
 
     async def add_reserved_slot(self, steam_id: str) -> None:
         await self._request("POST", "/api/v1/reserved-slots", json={"steamId": steam_id})
@@ -90,13 +91,13 @@ class APIClient:
     async def send_player_message(self, steam_id: str, message: str) -> None:
         await self._request("POST", f"/api/v1/players/{steam_id}/message", json={"message": message})
 
-    async def get_config(self) -> schemas.Config1:
+    async def get_config(self) -> rcon_schemas.Config1:
         data = await self._request("GET", "/api/v1/config")
-        return schemas.Config1.model_validate(data)
+        return rcon_schemas.Config1.model_validate(data)
 
-    async def update_config(self, revision: str, new_text: str) -> schemas.ConfigResult:
+    async def update_config(self, revision: str, new_text: str) -> rcon_schemas.ConfigResult:
         data = await self._request("PUT", "/api/v1/config", json={"revision": revision, "new_text": new_text})
-        return schemas.ConfigResult.model_validate(data)
+        return rcon_schemas.ConfigResult.model_validate(data)
 
     # Database endpoints
     async def link_account(self, discord_id: str, steam_id: str) -> None:
@@ -253,11 +254,11 @@ class APIClient:
             return None
 
     async def kick_player(self, steam_id: str, reason: str) -> None:
-        payload = schemas.ReasonRequest(reason=reason).model_dump(exclude_none=True)
+        payload = rcon_schemas.ReasonRequest(reason=reason).model_dump(exclude_none=True)
         await self._request("POST", f"/api/v1/players/{steam_id}/kick", json=payload)
 
     async def ban_player(self, steam_id: str, reason: str, duration_days: int = 0, solo_discord: bool = False) -> None:
-        payload = schemas.ReasonRequest(reason=reason, duration_days=duration_days, solo_discord=solo_discord).model_dump(exclude_none=True)
+        payload = rcon_schemas.ReasonRequest(reason=reason, duration_days=duration_days, solo_discord=solo_discord).model_dump(exclude_none=True)
         await self._request("POST", f"/api/v1/players/{steam_id}/ban", json=payload)
         
     async def unban_player(self, steam_id: str) -> None:
@@ -267,7 +268,7 @@ class APIClient:
         return await self._request("POST", "/api/v1/db/sync_bans")
 
     async def switch_faction(self, steam_id: str, faction: str) -> None:
-        payload = schemas.FactionRequest(faction=faction).model_dump()
+        payload = rcon_schemas.FactionRequest(faction=faction).model_dump()
         await self._request("POST", f"/api/v1/players/{steam_id}/faction", json=payload)
 
     async def get_rcon_sync_status(self) -> dict[str, Any]:

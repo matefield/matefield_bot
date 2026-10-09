@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 plugin = crescent.Plugin[hikari.GatewayBot, Model]()
 
-from wardogs_schemas.v1 import SquadData
+from wardogs_schemas.dtos import SquadData
 
 from src.ui_utils import UIColors, format_api_error
 
