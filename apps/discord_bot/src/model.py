@@ -1,6 +1,8 @@
-from typing import Optional
+
 from wardogs_config import BOT_SETTINGS, DiscordBotSettings
+
 from src.api_client import APIClient
+
 
 class Model:
     api: APIClient
@@ -8,7 +10,7 @@ class Model:
     players_cache: dict
     initial_scan_done: bool
     
-    def __init__(self, settings: Optional[DiscordBotSettings] = None):
+    def __init__(self, settings: DiscordBotSettings | None = None):
         cfg = settings or BOT_SETTINGS
         self.api = APIClient(
             base_url=cfg.API_BASE_URL,

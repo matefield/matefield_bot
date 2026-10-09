@@ -8,18 +8,19 @@ This eliminates the stale ``rcon_client`` pattern where every call used
 the .env-hardcoded server regardless of what was stored in the database.
 """
 import logging
-from typing import Any, Tuple
+from typing import Any
+
 from sqlmodel.ext.asyncio.session import AsyncSession
 from wardogs_schemas import v1 as schemas
 
-from src.connections.apis.rcon import RCONManager, RCONClient
+from src.connections.apis.rcon import RCONClient, RCONManager
 
 logger = logging.getLogger("wardogs.server_service")
 
 
 class ServerService:
     @staticmethod
-    async def _get_client(session: AsyncSession) -> Tuple[Any, RCONClient]:
+    async def _get_client(session: AsyncSession) -> tuple[Any, RCONClient]:
         """Resolves the default RCON client from DB (falls back to .env config)."""
         return await RCONManager.get_default_server(session)
 
@@ -88,6 +89,7 @@ class ServerService:
     @staticmethod
     async def add_reserved_slot(steam_id: str, *, session: AsyncSession) -> None:
         from sqlmodel import select
+
         from src.connections.databases.db import Membership
 
         db_stmt = select(Membership.steam_id).where(Membership.is_active == True).order_by(Membership.steam_id)
@@ -105,6 +107,7 @@ class ServerService:
     @staticmethod
     async def remove_reserved_slot(steam_id: str, *, session: AsyncSession) -> None:
         from sqlmodel import select
+
         from src.connections.databases.db import Membership
 
         db_stmt = select(Membership.steam_id).where(Membership.is_active == True).order_by(Membership.steam_id)

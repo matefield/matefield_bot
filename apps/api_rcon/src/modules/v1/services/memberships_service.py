@@ -1,10 +1,10 @@
 import logging
 import hashlib
 import json
-from datetime import datetime, timezone, timedelta
+from datetime import UTC, datetime, timezone, timedelta
 from typing import Any, Dict, List, Optional
 from fastapi import HTTPException
-from sqlmodel import select, func, col, or_
+from sqlmodel import col, func, or_, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from src.connections.databases.db import Player, Membership, Role, PlayerRole, BotConfig, MembershipType, RoleDiscordBinding, RconServer
@@ -134,7 +134,7 @@ class MembershipsService:
             if existing_membership.end_time:
                 m_end = existing_membership.end_time
                 if m_end.tzinfo is None:
-                    m_end = m_end.replace(tzinfo=timezone.utc)
+                    m_end = m_end.replace(tzinfo=UTC)
                 if m_end > start_date:
                     # Still active, accumulate remaining time to the new membership
                     end_date = MembershipsService._add_days(m_end, days_to_add) if days_to_add > 0 else None
@@ -357,7 +357,7 @@ class MembershipsService:
           Si no tiene otra, elimina ese PlayerRole (VIP).
         - Por regla de negocio, los roles con role_type in ('SPECIAL', 'SYSTEM') (ej. Fundador, Staff)
           son permanentes en la cuenta del jugador y NO se revocan ante expiración de suscripción.
-          Solo se revocan si revoke_special_role=True (reembolsos o disputas en Tebex).
+          Solo se revocan si revoke_special_role=True (reembolsos o disputas).
         """
         m.is_active = False
         session.add(m)
@@ -413,7 +413,7 @@ class MembershipsService:
                     await session.delete(pr)
 
     @staticmethod
-    async def edit_membership(membership_id: int, req: EditMembershipRequest, session: AsyncSession) -> Dict[str, Any]:
+    async def edit_membership(membership_id: int, req: EditMembershipRequest, session: AsyncSession) -> dict[str, Any]:
         membership = await session.get(Membership, membership_id)
         if not membership:
             raise HTTPException(status_code=404, detail="Membership not found")
@@ -493,7 +493,7 @@ class MembershipsService:
         return {"ok": True, "message": "Membership updated"}
 
     @staticmethod
-    async def compensate_memberships(days: int, session: AsyncSession) -> Dict[str, Any]:
+    async def compensate_memberships(days: int, session: AsyncSession) -> dict[str, Any]:
         if days <= 0:
             raise HTTPException(status_code=400, detail="La cantidad de días a compensar debe ser mayor a 0.")
 
@@ -517,7 +517,7 @@ class MembershipsService:
         return {"ok": True, "message": f"Compensated {count} memberships with {days} days."}
 
     @staticmethod
-    async def delete_membership(membership_id: int, session: AsyncSession) -> Dict[str, Any]:
+    async def delete_membership(membership_id: int, session: AsyncSession) -> dict[str, Any]:
         membership = await session.get(Membership, membership_id)
         if not membership:
             raise HTTPException(status_code=404, detail="Membership not found")
@@ -568,7 +568,7 @@ class MembershipsService:
             for r_id in (m.special_role_id, m.role_granted_id)
             if r_id is not None
         }
-        roles_by_id: Dict[int, Role] = {}
+        roles_by_id: dict[int, Role] = {}
         if role_ids:
             fetched_roles = (await session.exec(select(Role).where(col(Role.id).in_(role_ids)))).all()
             roles_by_id = {r.id: r for r in fetched_roles if r.id is not None}
@@ -621,8 +621,8 @@ class MembershipsService:
         }
 
     @staticmethod
-    async def sync_memberships_logic(session: AsyncSession) -> Dict[str, Any]:
-        now = datetime.now(timezone.utc)
+    async def sync_memberships_logic(session: AsyncSession) -> dict[str, Any]:
+        now = datetime.now(UTC)
         
         # 1. Expire old memberships
         expired_stmt = select(Membership).where(
@@ -687,7 +687,7 @@ class MembershipsService:
         # Batch query all active memberships by steam_id to avoid N+1 queries
         active_m_stmt = select(Membership.steam_id, Membership.membership_type).where(Membership.is_active == True).order_by(col(Membership.id))
         all_active_m = (await session.exec(active_m_stmt)).all()
-        m_types_by_steam: Dict[str, List[str]] = {}
+        m_types_by_steam: dict[str, list[str]] = {}
         for sid, mtype in all_active_m:
             m_types_by_steam.setdefault(sid, []).append(mtype)
 
@@ -701,7 +701,7 @@ class MembershipsService:
             .order_by(col(PlayerRole.steam_id), col(PlayerRole.role_id))
         )
         all_pr = (await session.exec(pr_stmt)).all()
-        roles_by_steam: Dict[str, List[int]] = {}
+        roles_by_steam: dict[str, list[int]] = {}
         for sid, dr_id in all_pr:
             if dr_id and str(dr_id).isdigit():
                 roles_by_steam.setdefault(sid, []).append(int(dr_id))
@@ -716,7 +716,7 @@ class MembershipsService:
             
         all_roles = (await session.exec(select(Role).order_by(Role.id))).all()
         roles_by_id = {r.id: r for r in all_roles if r.id is not None}
-        role_maps: Dict[str, int] = {}
+        role_maps: dict[str, int] = {}
         for r in all_roles:
             if r.role_type == "VIP" and r.discord_role_id and str(r.discord_role_id).isdigit():
                 dr_val = int(r.discord_role_id)
@@ -752,7 +752,7 @@ class MembershipsService:
         }
 
     @staticmethod
-    async def get_rcon_sync_status(session: AsyncSession) -> Dict[str, Any]:
+    async def get_rcon_sync_status(session: AsyncSession) -> dict[str, Any]:
         active_stmt = select(Membership.steam_id).where(Membership.is_active == True).distinct()
         active_steam_ids = set((await session.exec(active_stmt)).all())
         
@@ -773,3 +773,71 @@ class MembershipsService:
             "pending_add": pending_add,
             "pending_remove": pending_remove
         }
+
+    @staticmethod
+    async def get_expiring_memberships(session: AsyncSession) -> dict[str, list[dict[str, Any]]]:
+        now = datetime.now(UTC)
+        three_days_from_now = now + timedelta(days=3)
+        one_day_from_now = now + timedelta(hours=24)
+
+        # We need players with active memberships where end_time is not None, and either:
+        # (end_time <= three_days_from_now and not notified_3d)
+        # OR
+        # (end_time <= one_day_from_now and not notified_24h)
+
+        stmt = select(Membership, Player.discord_id).join(Player).where(
+            Membership.is_active == True,
+            Membership.end_time != None,
+            or_(
+                (Membership.end_time <= three_days_from_now) & (Membership.notified_3d == False),
+                (Membership.end_time <= one_day_from_now) & (Membership.notified_24h == False)
+            )
+        )
+
+        results = await session.execute(stmt)
+
+        expiring_3d = []
+        expiring_24h = []
+
+        for membership, discord_id in results:
+            if not discord_id:
+                continue
+
+            mem_dict = {
+                "id": membership.id,
+                "steam_id": membership.steam_id,
+                "discord_id": discord_id,
+                "type": membership.membership_type,
+                "end_time": membership.end_time.isoformat() if membership.end_time else None
+            }
+
+            # SQLite and historical rows can yield naive dates. Their stored
+            # values are UTC, matching the membership creation contract.
+            end_time = membership.end_time
+            if end_time.tzinfo is None:
+                end_time = end_time.replace(tzinfo=UTC)
+            # Check 24h first because it's more urgent.
+            if end_time <= one_day_from_now and not membership.notified_24h:
+                expiring_24h.append(mem_dict)
+            elif end_time <= three_days_from_now and not membership.notified_3d:
+                expiring_3d.append(mem_dict)
+
+        return {
+            "expiring_3d": expiring_3d,
+            "expiring_24h": expiring_24h
+        }
+
+    @staticmethod
+    async def mark_membership_notified(membership_id: int, notification_type: str, session: AsyncSession) -> bool:
+        membership = (await session.exec(select(Membership).where(Membership.id == membership_id))).first()
+        if not membership:
+            return False
+
+        if notification_type == "3d":
+            membership.notified_3d = True
+        elif notification_type == "24h":
+            membership.notified_24h = True
+
+        session.add(membership)
+        await session.commit()
+        return True

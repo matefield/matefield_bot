@@ -1,8 +1,13 @@
-"""Identify Discord membership commands so a retry never adds days twice."""
+"""Identify Discord membership commands so a retry never adds days twice.
+
+This branch originally reused n0j1e2f3g4h5, already assigned upstream to global
+seeding. Keep the downstream o1/p2 revision IDs so databases at the local p2
+head can merge the upstream branch without replaying their applied columns.
+"""
 from alembic import op
 import sqlalchemy as sa
 
-revision = "n0j1e2f3g4h5"
+revision = "7bd48ca30901"
 down_revision = "2c236beea135"
 branch_labels = None
 depends_on = None

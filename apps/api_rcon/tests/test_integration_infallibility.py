@@ -1,16 +1,11 @@
 import asyncio
-from datetime import datetime, timezone, timedelta
-import pytest
-from httpx import AsyncClient
-from sqlmodel import select
-from sqlmodel.ext.asyncio.session import AsyncSession
-from wardogs_schemas import v1 as schemas
 
-from src.connections.databases.db import Player, Membership, Role, PlayerRole
-import src.connections.apis.rcon as rcon_module
-from src.connections.apis.rcon import RCONClient, RCONManager, _update_ini_array
-from src.modules.v1.services.memberships_service import MembershipsService
+import pytest
+from sqlmodel.ext.asyncio.session import AsyncSession
+from src.connections.apis.rcon import RCONClient
+from src.connections.databases.db import Membership
 from src.modules.v1.services.server_service import ServerService
+from wardogs_schemas import v1 as schemas
 
 
 @pytest.mark.asyncio

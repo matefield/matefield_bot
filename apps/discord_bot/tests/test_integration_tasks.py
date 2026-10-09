@@ -1,8 +1,8 @@
+from unittest.mock import AsyncMock, MagicMock
+
 import pytest
-from unittest.mock import MagicMock, AsyncMock, patch
-from datetime import datetime, timezone, timedelta
-from src.plugins.tasks import membership_monitor, plugin, execute_membership_sync
-from wardogs_schemas import v1 as schemas
+from src.plugins.tasks import execute_membership_sync, membership_monitor, plugin
+
 
 @pytest.mark.asyncio
 async def test_membership_monitor_syncs_roles_and_respects_whitelist():
@@ -260,7 +260,7 @@ async def test_sync_single_user_roles_linked():
 
     res = await sync_single_user_roles(app, model, discord_id, target_guild_id=guild_id)
 
-    assert res["success"] is True
+    assert res.get("success", False) is True
     assert res["added"] == 2  # Link role + VIP role
     assert res["removed"] == 1  # Old role removed
     app.rest.remove_role_from_member.assert_called_once_with(guild_id, discord_id, old_role_id)
@@ -301,7 +301,7 @@ async def test_sync_single_user_roles_unlinked_revokes_all():
 
     res = await sync_single_user_roles(app, model, discord_id, target_guild_id=guild_id)
 
-    assert res["success"] is True
+    assert res.get("success", False) is True
     assert res["added"] == 0
     assert res["removed"] == 2
     removed_roles = {call[0][2] for call in app.rest.remove_role_from_member.call_args_list}
@@ -321,7 +321,7 @@ async def test_sync_single_user_roles_respects_whitelist():
 
     res = await sync_single_user_roles(app, model, 9999, target_guild_id=100)
 
-    assert res["success"] is True
+    assert res.get("success", False) is True
     assert res.get("whitelist_skipped") is True
     model.api.sync_memberships.assert_not_called()
 

@@ -1,7 +1,12 @@
 """Public result page; identities originate exclusively in Discord interactions."""
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse
-from src.modules.v1.routers.auth import steam_auth_result, EXPIRED_TITLE, EXPIRED_MESSAGE
+
+from src.modules.v1.routers.auth import (
+    EXPIRED_MESSAGE,
+    EXPIRED_TITLE,
+    steam_auth_result,
+)
 from src.modules.v1.services.auth_page_service import AuthPageService
 
 router = APIRouter(prefix="/vincular/discord-steam", tags=["Auth"])

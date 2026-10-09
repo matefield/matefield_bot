@@ -1,10 +1,9 @@
-from typing import Any, Dict, Optional
 from fastapi import APIRouter, Depends
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from src.security.guard import verify_api_key_guard
 from src.connections.databases.db import get_session
 from src.modules.v1.services.matches_service import MatchesService
+from src.security.guard import verify_api_key_guard
 
 router = APIRouter(tags=["Matches & Leaderboard"])
 

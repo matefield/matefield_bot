@@ -1,26 +1,27 @@
-import hmac
-import hashlib
-import json
 import base64
-import time
+import hashlib
+import hmac
+import json
 import secrets
-from typing import Optional, Dict, Any
+import time
+from typing import Any
+
 
 def create_steam_link_token(
     discord_id: str,
     secret_key: str,
-    guild_id: Optional[str] = None,
+    guild_id: str | None = None,
     expires_in: int = 600,
-    discord_username: Optional[str] = None,
-    discord_tag: Optional[str] = None,
-    discord_avatar: Optional[str] = None,
+    discord_username: str | None = None,
+    discord_tag: str | None = None,
+    discord_avatar: str | None = None,
     **extra
 ) -> str:
     """
     Genera un token seguro firmado con HMAC-SHA256 para el flujo de vinculación de Steam OpenID.
     Por defecto expira en 10 minutos (600 segundos).
     """
-    payload: Dict[str, Any] = {
+    payload: dict[str, Any] = {
         "purpose": "steam_link",
         "jti": secrets.token_urlsafe(32),
         "discord_id": str(discord_id),
@@ -44,7 +45,7 @@ def create_steam_link_token(
     
     return f"{payload_b64}.{sig_b64}"
 
-def verify_steam_link_token(token: str, secret_key: str) -> Optional[Dict[str, Any]]:
+def verify_steam_link_token(token: str, secret_key: str) -> dict[str, Any] | None:
     """
     Verifica la autenticidad y vigencia de un token de vinculación de Steam.
     Devuelve el payload con discord_id y guild_id si es válido, o None si expiró o fue alterado.

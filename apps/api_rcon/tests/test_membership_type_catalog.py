@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 from pydantic import ValidationError
+from sqlalchemy import update
 from sqlmodel import select
 
 from src.connections.apis.warcon import WarconClient
@@ -197,3 +198,24 @@ async def test_catalog_rejects_counts_outside_database_range(client, session, fi
     assert (await client.post("/api/v1/membership-types", json={"code": "invalid", "name": "Invalid", field: value})).status_code == 422
     assert (await client.put(f"/api/v1/membership-types/{item_id}", json={field: value})).status_code == 422
     assert len((await session.exec(select(MembershipType))).all()) == 1
+
+
+@pytest.mark.asyncio
+async def test_nullable_upstream_usd_price_is_presented_as_zero_without_overwriting_storage(client, session):
+    plan = MembershipType(code="FREE", name="Free membership")
+    session.add(plan)
+    await session.commit()
+    # INSERT applies the ORM default of zero. Imported upstream rows can still
+    # contain NULL, so persist that state explicitly before exercising the API.
+    await session.exec(update(MembershipType).where(MembershipType.id == plan.id).values(price_usd=None))
+    await session.commit()
+    await session.refresh(plan)
+    assert plan.price_usd is None
+    listing = await client.get("/api/v1/membership-types")
+    assert listing.status_code == 200 and listing.json()[0]["price_usd"] == 0
+    item = await client.get(f"/api/v1/membership-types/{plan.id}")
+    assert item.status_code == 200 and item.json()["price_usd"] == 0
+    renamed = await client.put(f"/api/v1/membership-types/{plan.id}", json={"name": "Free renamed"})
+    assert renamed.status_code == 200 and renamed.json()["membership_type"]["price_usd"] == 0
+    await session.refresh(plan)
+    assert plan.price_usd is None

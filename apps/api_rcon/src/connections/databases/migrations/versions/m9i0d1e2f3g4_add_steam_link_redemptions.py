@@ -1,6 +1,6 @@
 """Persist consumed Steam links to prevent reuse after unlinking."""
-from alembic import op
 import sqlalchemy as sa
+from alembic import op
 
 revision = "m9i0d1e2f3g4"
 down_revision = "l8h9c0d1e2f3"

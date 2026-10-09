@@ -1,13 +1,21 @@
-from typing import Any, Dict, List, Optional
+from typing import Any
+
 from fastapi import HTTPException
-from sqlmodel import select, func, desc, col
+from sqlmodel import col, func, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from src.connections.databases.db import Match, MatchTeamStats, MatchPlayerStats, Team, Player
+from src.connections.databases.db import (
+    Match,
+    MatchPlayerStats,
+    MatchTeamStats,
+    Player,
+    Team,
+)
+
 
 class MatchesService:
     @staticmethod
-    async def get_paginated_matches(page: int, limit: int, session: AsyncSession) -> Dict[str, Any]:
+    async def get_paginated_matches(page: int, limit: int, session: AsyncSession) -> dict[str, Any]:
         offset = max(0, (page - 1) * limit)
         statement = select(Match).order_by(col(Match.start_time).desc()).offset(offset).limit(limit)
         matches = (await session.exec(statement)).all()
@@ -31,7 +39,7 @@ class MatchesService:
         }
 
     @staticmethod
-    async def get_latest_match(session: AsyncSession) -> Dict[str, Any]:
+    async def get_latest_match(session: AsyncSession) -> dict[str, Any]:
         statement = select(Match).where(Match.end_time != None).order_by(col(Match.end_time).desc())
         match = (await session.exec(statement)).first()
         
@@ -72,7 +80,7 @@ class MatchesService:
         }
 
     @staticmethod
-    async def get_leaderboard(metric: str, limit: int, session: AsyncSession) -> Dict[str, Any]:
+    async def get_leaderboard(metric: str, limit: int, session: AsyncSession) -> dict[str, Any]:
         valid_metrics = {
             "kills": MatchPlayerStats.kills, 
             "deaths": MatchPlayerStats.deaths, 

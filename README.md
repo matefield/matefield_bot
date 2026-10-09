@@ -117,6 +117,24 @@ Estas pruebas comprueban los bloqueos del último cupo, el orden de las entregas
 y la exclusión mutua entre desasignaciones, altas y configuraciones de roles;
 usan Warcon simulado y crean y eliminan tablas solamente en esa base temporal.
 
+
+Las migraciones de membresías y las de squads se unen en el head
+`29f437dc92a1`. Las bases existentes en `p2l3g4h5i6j7` o `0132aeb12a1c`
+aplican la rama pendiente con `alembic upgrade head`. La revisión de creación
+idempotente usa ahora `7bd48ca30901` para evitar reutilizar el ID de global seeding.
+
+Para verificar una instalación vacía y ambos caminos de actualización, usá otra
+base temporal vacía con el mismo prefijo y configurá su URL en
+`MEMBERSHIP_MIGRATION_POSTGRES_TEST_URL`:
+
+```bash
+uv run pytest apps/api_rcon/tests/test_membership_migrations_postgres.py
+```
+
+La suite comprueba el esquema final y que los datos existentes permanezcan
+iguales; limpia sus tablas y enums después de cada caso. La creación y eliminación
+de la base temporal queda a cargo de quien ejecuta las pruebas.
+
 ## Motor de Sincronización Automática (Multi-Server Polling)
 La aplicación incluye un motor en segundo plano (`sync_engine.py`) embebido en FastAPI diseñado para entornos multi-servidor:
 1. **Concurrencia Multi-Server:** Consulta continuamente (polling) los endpoints RCON de todos los servidores registrados en la tabla `rcon_servers` que estén activos.

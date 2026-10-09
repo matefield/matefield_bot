@@ -2,22 +2,22 @@ from typing import Annotated, Any, Dict, Optional
 from fastapi import APIRouter, Depends, Request, HTTPException, Header, Path, Query
 from fastapi.responses import FileResponse
 from sqlmodel.ext.asyncio.session import AsyncSession
+from wardogs_config import ENVIRONMENT_SETTINGS
 from wardogs_schemas import v1 as schemas
 from wardogs_schemas.dtos import DiscordSnowflake
 
-from src.security.guard import verify_api_key_guard
 from src.connections.databases.db import get_session
-from wardogs_config import ENVIRONMENT_SETTINGS
 from src.modules.v1.schemas.dtos import (
     AddMembershipRequest, AddMembershipResponse, EditMembershipRequest, CompensateRequest
 )
-from src.modules.v1.services.memberships_service import MembershipsService
 from src.modules.v1.services.export_service import (
-    generate_memberships_csv,
     generate_export_download_token,
-    verify_export_download_token,
+    generate_memberships_csv,
     get_export_dir,
+    verify_export_download_token,
 )
+from src.modules.v1.services.memberships_service import MembershipsService
+from src.security.guard import verify_api_key_guard
 
 router = APIRouter(tags=["Memberships"])
 
@@ -81,16 +81,14 @@ async def export_memberships_endpoint(
 @router.get("/db/memberships/export/download/{filename}")
 async def download_memberships_export_endpoint(
     filename: str,
-    token: Optional[str] = None,
-    api_key: Optional[str] = None,
-    api_key_header: Optional[str] = Header(None, alias="X-API-Key")
+    token: str | None = None,
+    api_key: str | None = None,
+    api_key_header: str | None = Header(None, alias="X-API-Key")
 ):
     master_key = ENVIRONMENT_SETTINGS.SECURITY_SETTINGS.API_KEY
     is_authorized = False
 
-    if token and verify_export_download_token(filename, token):
-        is_authorized = True
-    elif (api_key and api_key == master_key) or (api_key_header and api_key_header == master_key):
+    if token and verify_export_download_token(filename, token) or (api_key and api_key == master_key) or (api_key_header and api_key_header == master_key):
         is_authorized = True
 
     if not is_authorized:
@@ -108,3 +106,17 @@ async def download_memberships_export_endpoint(
         media_type="text/csv",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'}
     )
+
+
+@router.get("/db/memberships/expiring", dependencies=[Depends(verify_api_key_guard)])
+async def get_expiring_memberships(session: AsyncSession = Depends(get_session)):
+    return await MembershipsService.get_expiring_memberships(session)
+
+@router.post("/db/memberships/{membership_id}/mark_notified", dependencies=[Depends(verify_api_key_guard)])
+async def mark_membership_notified(membership_id: Annotated[int, Path(ge=1, le=2 ** 31 - 1)], notification_type: str, session: AsyncSession = Depends(get_session)):
+    if notification_type not in ["3d", "24h"]:
+        raise HTTPException(status_code=400, detail="Invalid notification_type")
+    success = await MembershipsService.mark_membership_notified(membership_id, notification_type, session)
+    if not success:
+        raise HTTPException(status_code=404, detail="Membership not found")
+    return {"ok": True}
