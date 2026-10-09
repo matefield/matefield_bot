@@ -697,3 +697,49 @@ async def match_announcer_task():
         logger.exception(f"[Match Announcer] Error: {e!r}")
 
 
+@plugin.include
+@tasks.loop(hours=2)
+async def expiration_notifier_task():
+    if not plugin.model.api or not plugin.app:
+        return
+        
+    try:
+        data = await plugin.model.api.get_expiring_memberships()
+        if not data:
+            return
+            
+        expiring_3d = data.get("expiring_3d", [])
+        expiring_24h = data.get("expiring_24h", [])
+        
+        for mem in expiring_3d:
+            discord_id = mem.get("discord_id")
+            if discord_id and str(discord_id).isdigit():
+                try:
+                    user = await plugin.app.rest.fetch_user(int(discord_id))
+                    await user.send(content=f"⚠️ **Aviso de Vencimiento VIP**\n\nHola, te avisamos que tu membresía VIP ({mem.get('type')}) está por vencer en **3 días** o menos. ¡Aprovecha el tiempo y considera renovarla si lo deseas!")
+                    await plugin.model.api.mark_membership_notified(mem.get("id"), "3d")
+                    logger.info(f"[Expiration Notifier] Aviso de 3 días enviado a {discord_id}")
+                    await asyncio.sleep(1) # rate limit
+                except hikari.ForbiddenError:
+                    logger.warning(f"[Expiration Notifier] No se pudo enviar DM a {discord_id} (DMs cerrados)")
+                    await plugin.model.api.mark_membership_notified(mem.get("id"), "3d") # mark anyway so we don't spam errors
+                except Exception as e:
+                    logger.error(f"[Expiration Notifier] Error al avisar 3d a {discord_id}: {e}")
+                    
+        for mem in expiring_24h:
+            discord_id = mem.get("discord_id")
+            if discord_id and str(discord_id).isdigit():
+                try:
+                    user = await plugin.app.rest.fetch_user(int(discord_id))
+                    await user.send(content=f"🚨 **ALERTA: Vencimiento VIP Inminente**\n\nHola, tu membresía VIP ({mem.get('type')}) vencerá en **menos de 24 horas**. ¡Esperamos que hayas disfrutado tus beneficios!")
+                    await plugin.model.api.mark_membership_notified(mem.get("id"), "24h")
+                    logger.info(f"[Expiration Notifier] Aviso de 24 horas enviado a {discord_id}")
+                    await asyncio.sleep(1) # rate limit
+                except hikari.ForbiddenError:
+                    logger.warning(f"[Expiration Notifier] No se pudo enviar DM a {discord_id} (DMs cerrados)")
+                    await plugin.model.api.mark_membership_notified(mem.get("id"), "24h")
+                except Exception as e:
+                    logger.error(f"[Expiration Notifier] Error al avisar 24h a {discord_id}: {e}")
+                    
+    except Exception as e:
+        logger.exception(f"[Expiration Notifier] Error general: {e!r}")

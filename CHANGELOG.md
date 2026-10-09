@@ -7,6 +7,30 @@ y este proyecto se adhiere a [Semantic Versioning (SemVer 2.0.0)](https://semver
 
 ---
 
+## [1.7.0] - 2026-10-08
+
+### Añadido
+- **Notificaciones DM de Vencimiento VIP**:
+  - Implementación de la tarea programada `expiration_notifier_task` en `discord_bot` para notificar automáticamente por mensaje directo (DM) a los usuarios cuando su membresía VIP está a **3 días** o a **menos de 24 horas** de expirar.
+  - Gestión de rate limits de Discord (`asyncio.sleep(1)`) y captura controlada de `hikari.ForbiddenError` (usuarios con DMs cerrados) para garantizar estabilidad y continuidad de la tarea.
+- **Endpoints de Monitoreo de Membresías por Vencer**:
+  - `GET /api/v1/db/memberships/expiring`: Consulta las membresías activas en ventana de expiración (3 días y 24 horas) filtrando las ya notificadas.
+  - `POST /api/v1/db/memberships/{id}/mark_notified`: Marca atómicamente la notificación (`3d` o `24h`) enviada en base de datos.
+- **Migración de Base de Datos (Alembic)**:
+  - Migración `0132aeb12a1c_add_notified_columns_to_memberships.py` que agrega las columnas booleanas `notified_3d` y `notified_24h` (con default `False`) a la tabla `memberships`.
+
+### Corregido
+- **Resiliencia de Validación en Cliente API (`api_client.py`)**:
+  - Corrección de `ValidationError` de Pydantic en `get_player_by_steam` y `get_player_by_discord` mediante inyección defensiva de identificadores cuando el backend devuelve esquemas transicionales o incompletos.
+  - Prevención de fallos repetitivos en `vip_monitor`.
+- **Indexación de Tuplas en Estadísticas de Pelotones (`squads_service.py`)**:
+  - Corrección en el procesamiento de miembros retirados en el leaderboard interno, indexando correctamente las tuplas resultantes de SQLAlchemy (`row[0]`, `row[1]`, etc.) para prevenir errores de tipo `AttributeError`.
+- **Estandarización de Tests de Ciclo de Vida (`test_role_lifecycle_and_pricing.py`)**:
+  - Eliminación de argumentos duplicados de `price_usd` en la creación de instancias de prueba de `MembershipType`.
+  - 100% de la suite de pruebas validada (147 pruebas pasando).
+
+---
+
 ## [1.6.0] - 2026-10-08
 
 ### Añadido
