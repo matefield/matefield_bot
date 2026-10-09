@@ -1,6 +1,6 @@
-from fastapi import FastAPI, Depends, Header, HTTPException, Request
-from typing import Optional, List
 import datetime
+
+from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from wardogs_schemas import v1 as schemas
 
 app = FastAPI(title="Wardogs RCON Mock")
@@ -9,21 +9,21 @@ audit_logs = []
 
 def add_audit_log(event: str, detail: str):
     audit_logs.insert(0, {
-        "timestampUtc": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        "timestampUtc": datetime.datetime.now(datetime.UTC).isoformat(),
         "peer": "127.0.0.1",
         "sessionId": "mock-session",
         "event": event,
         "detail": detail
     })
 
-def verify_auth(authorization: Optional[str] = Header(None)):
+def verify_auth(authorization: str | None = Header(None)):
     if authorization != "Bearer test":
         raise HTTPException(status_code=401, detail="Unauthorized")
     return authorization
 
-from typing import Any, Dict
+from typing import Any
 
-mock_state: Dict[str, Any] = {
+mock_state: dict[str, Any] = {
     "score": 50,
     "rotation": 0,
     "maps": ["Bakurani", "Desert Strike", "Urban Combat", "Jungle Ops"],
@@ -70,10 +70,10 @@ async def get_status(auth: str = Depends(verify_auth)):
         "rotation": {"nowIndex": mock_state["rotation"], "nextIndex": (mock_state["rotation"] + 1) % len(mock_state["maps"])}
     }
 
-from typing import Any, Dict, List
-
 import random
-mock_players: List[Dict[str, Any]] = []
+from typing import Any
+
+mock_players: list[dict[str, Any]] = []
 def populate_mock_players(count: int = 80):
     global mock_players
     factions = ['Lonestar', 'Manticore', 'Valkyre']

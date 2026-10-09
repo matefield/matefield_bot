@@ -1,8 +1,8 @@
+from unittest.mock import AsyncMock, MagicMock
+
 import pytest
-from unittest.mock import MagicMock, AsyncMock, patch
-from datetime import datetime, timezone, timedelta
-from src.plugins.tasks import membership_monitor, plugin, execute_membership_sync
-from wardogs_schemas import v1 as schemas
+from src.plugins.tasks import execute_membership_sync, membership_monitor, plugin
+
 
 @pytest.mark.asyncio
 async def test_membership_monitor_syncs_roles_and_respects_whitelist():

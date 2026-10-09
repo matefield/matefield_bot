@@ -1,10 +1,12 @@
-import logging
 import asyncio
+import logging
+
 import crescent
 import hikari
-from src.model import Model
+
+from src.groups import config_group, role_group, roles_group, whitelist_group
 from src.hooks import admin_only
-from src.groups import config_group, roles_group, whitelist_group, role_group
+from src.model import Model
 from src.trace import get_tracer
 
 logger = logging.getLogger(__name__)

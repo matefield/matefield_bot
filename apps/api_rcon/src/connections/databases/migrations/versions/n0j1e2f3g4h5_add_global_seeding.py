@@ -1,6 +1,6 @@
 """Add global seeding and server_id to PlayerSession"""
-from alembic import op
 import sqlalchemy as sa
+from alembic import op
 
 revision = "n0j1e2f3g4h5"
 down_revision = "m9i0d1e2f3g4"

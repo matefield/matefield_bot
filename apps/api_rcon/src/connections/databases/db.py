@@ -7,16 +7,17 @@ returns them in correct foreign-key dependency order for the backup service.
 The async engine and ``get_session`` dependency are also exported from this
 module so that routers and services have a single import point for DB access.
 """
-from typing import Optional, List
-from sqlmodel import Field, SQLModel, Relationship
-from sqlmodel.ext.asyncio.session import AsyncSession
-from sqlalchemy import Column, DateTime, BigInteger, ForeignKey, Text, CheckConstraint
-from sqlalchemy.ext.asyncio import create_async_engine
-from datetime import datetime, timezone
-from enum import Enum
 import uuid
+from datetime import UTC, datetime
+from enum import Enum
+from typing import Optional
 
+from sqlalchemy import CheckConstraint, Column, DateTime, ForeignKey, Text
+from sqlalchemy.ext.asyncio import create_async_engine
+from sqlmodel import Field, Relationship, SQLModel
+from sqlmodel.ext.asyncio.session import AsyncSession
 from wardogs_config import ENVIRONMENT_SETTINGS
+
 
 class RoleType(str, Enum):
     SYSTEM = "SYSTEM"
@@ -36,24 +37,24 @@ class PlayerRole(SQLModel, table=True):
 
 class Role(SQLModel, table=True):
     __tablename__ = "roles"
-    id: Optional[int] = Field(default=None, primary_key=True)
+    id: int | None = Field(default=None, primary_key=True)
     code: str = Field(unique=True, index=True)
     name: str
-    discord_role_id: Optional[str] = Field(default=None, index=True)
+    discord_role_id: str | None = Field(default=None, index=True)
     role_type: str = Field(index=True)
     
     # Relationships
-    players: List["Player"] = Relationship(back_populates="roles", link_model=PlayerRole)
+    players: list["Player"] = Relationship(back_populates="roles", link_model=PlayerRole)
 
 
 class Player(SQLModel, table=True):
     __tablename__ = "players"
     steam_id: str = Field(primary_key=True)
-    discord_id: Optional[str] = Field(default=None, unique=True, index=True)
-    custom_welcome_message: Optional[str] = Field(default=None)
-    observations: Optional[str] = Field(default=None)
-    in_game_name: Optional[str] = Field(default=None)
-    avatar_url: Optional[str] = Field(default=None)
+    discord_id: str | None = Field(default=None, unique=True, index=True)
+    custom_welcome_message: str | None = Field(default=None)
+    observations: str | None = Field(default=None)
+    in_game_name: str | None = Field(default=None)
+    avatar_url: str | None = Field(default=None)
     reward_points: int = Field(default=0)
     global_seeding_seconds: int = Field(default=0)
     global_rewarded_seconds: int = Field(default=0)
@@ -63,38 +64,38 @@ class Player(SQLModel, table=True):
     )
     
     # Relationships
-    roles: List[Role] = Relationship(back_populates="players", link_model=PlayerRole)
-    memberships: List["Membership"] = Relationship(back_populates="player")
-    reward_claims: List["RewardClaim"] = Relationship(back_populates="player")
+    roles: list[Role] = Relationship(back_populates="players", link_model=PlayerRole)
+    memberships: list["Membership"] = Relationship(back_populates="player")
+    reward_claims: list["RewardClaim"] = Relationship(back_populates="player")
 
 
 class Membership(SQLModel, table=True):
     __tablename__ = "memberships"
-    id: Optional[int] = Field(default=None, primary_key=True)
+    id: int | None = Field(default=None, primary_key=True)
     steam_id: str = Field(foreign_key="players.steam_id", index=True)
     membership_type: str = Field(index=True, sa_column_kwargs={"name": "type"})
-    start_time: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), sa_column=Column("start_date", DateTime(timezone=True)))
-    end_time: Optional[datetime] = Field(default=None, sa_column=Column("end_date", DateTime(timezone=True))) # Null means permanent
+    start_time: datetime = Field(default_factory=lambda: datetime.now(UTC), sa_column=Column("start_date", DateTime(timezone=True)))
+    end_time: datetime | None = Field(default=None, sa_column=Column("end_date", DateTime(timezone=True))) # Null means permanent
     is_active: bool = Field(default=True)
     is_booster: bool = Field(default=False)
-    role_granted_id: Optional[int] = Field(default=None, sa_column=Column("role_granted_id", ForeignKey("roles.id")))
-    special_role_id: Optional[int] = Field(default=None, sa_column=Column("special_role_id", ForeignKey("roles.id"), index=True))
+    role_granted_id: int | None = Field(default=None, sa_column=Column("role_granted_id", ForeignKey("roles.id")))
+    special_role_id: int | None = Field(default=None, sa_column=Column("special_role_id", ForeignKey("roles.id"), index=True))
     rcon_sync_status: str = Field(default="PENDING", sa_column_kwargs={"server_default": "PENDING"}) # PENDING, SUCCESS, FAILED
-    server_id: Optional[int] = Field(default=None, foreign_key="rcon_servers.id")
+    server_id: int | None = Field(default=None, foreign_key="rcon_servers.id")
     payment_source: str = Field(default="MANUAL", sa_column_kwargs={"server_default": "MANUAL"}) # MANUAL, REWARDS
     # Relationships
     player: Player = Relationship(back_populates="memberships")
-    role_granted: Optional[Role] = Relationship(sa_relationship_kwargs={"foreign_keys": "[Membership.role_granted_id]"})
-    special_role: Optional[Role] = Relationship(sa_relationship_kwargs={"foreign_keys": "[Membership.special_role_id]"})
+    role_granted: Role | None = Relationship(sa_relationship_kwargs={"foreign_keys": "[Membership.role_granted_id]"})
+    special_role: Role | None = Relationship(sa_relationship_kwargs={"foreign_keys": "[Membership.special_role_id]"})
 
 class PlayerSession(SQLModel, table=True):
     __tablename__ = "player_sessions"
     id: str = Field(default_factory=lambda: str(uuid.uuid4()), primary_key=True)
     steam_id: str = Field(foreign_key="players.steam_id", index=True)
-    server_id: Optional[int] = Field(default=None, foreign_key="rcon_servers.id")
+    server_id: int | None = Field(default=None, foreign_key="rcon_servers.id")
     
-    start_time: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), sa_column=Column(DateTime(timezone=True)))
-    end_time: Optional[datetime] = Field(default=None, sa_column=Column(DateTime(timezone=True)))
+    start_time: datetime = Field(default_factory=lambda: datetime.now(UTC), sa_column=Column(DateTime(timezone=True)))
+    end_time: datetime | None = Field(default=None, sa_column=Column(DateTime(timezone=True)))
     
     total_seconds: int = Field(default=0)
     seeding_seconds: int = Field(default=0)
@@ -104,7 +105,7 @@ class PlayerSession(SQLModel, table=True):
 
 class Team(SQLModel, table=True):
     __tablename__ = "teams"
-    id: Optional[int] = Field(default=None, primary_key=True)
+    id: int | None = Field(default=None, primary_key=True)
     name: str = Field(unique=True) # Lonestar, Manticore, Valkyre
     code: str = Field(unique=True) # BLU, GRN, RED
 
@@ -114,8 +115,8 @@ class Match(SQLModel, table=True):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()), primary_key=True)
     map_name: str
     start_time: datetime = Field(sa_column=Column(DateTime(timezone=True)))
-    end_time: Optional[datetime] = Field(default=None, sa_column=Column(DateTime(timezone=True)))
-    winning_team_id: Optional[int] = Field(default=None, foreign_key="teams.id")
+    end_time: datetime | None = Field(default=None, sa_column=Column(DateTime(timezone=True)))
+    winning_team_id: int | None = Field(default=None, foreign_key="teams.id")
     
     # Relationships deleted to avoid async lazy load cascades
 
@@ -136,15 +137,15 @@ class MatchPlayerStats(SQLModel, table=True):
     __tablename__ = "match_player_stats"
     steam_id: str = Field(foreign_key="players.steam_id", primary_key=True)
     match_id: str = Field(foreign_key="matches.id", primary_key=True)
-    team_id: Optional[int] = Field(default=None, foreign_key="teams.id")
-    squad_id: Optional[str] = Field(default=None, sa_column=Column(ForeignKey("squads.id", ondelete="SET NULL")))
+    team_id: int | None = Field(default=None, foreign_key="teams.id")
+    squad_id: str | None = Field(default=None, sa_column=Column(ForeignKey("squads.id", ondelete="SET NULL")))
     kills: int = Field(default=0)
     deaths: int = Field(default=0)
     cash_earned: int = Field(default=0)
     
     # Relationships
     player: Player = Relationship()
-    team: Optional[Team] = Relationship()
+    team: Team | None = Relationship()
     squad: Optional["Squad"] = Relationship()
 
 
@@ -154,7 +155,7 @@ class Squad(SQLModel, table=True):
     name: str = Field(unique=True, index=True)
     tag: str = Field(max_length=4, index=True)
     leader_steam_id: str = Field(foreign_key="players.steam_id", index=True)
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), sa_column=Column(DateTime(timezone=True), nullable=False))
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC), sa_column=Column(DateTime(timezone=True), nullable=False))
     
     total_kills: int = Field(default=0)
     total_deaths: int = Field(default=0)
@@ -163,13 +164,13 @@ class Squad(SQLModel, table=True):
     
     # Relationships
     leader: Player = Relationship()
-    members: List["SquadMember"] = Relationship(back_populates="squad")
+    members: list["SquadMember"] = Relationship(back_populates="squad")
 
 class SquadMember(SQLModel, table=True):
     __tablename__ = "squad_members"
     squad_id: str = Field(foreign_key="squads.id", primary_key=True)
     steam_id: str = Field(foreign_key="players.steam_id", primary_key=True)
-    joined_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), sa_column=Column(DateTime(timezone=True), nullable=False))
+    joined_at: datetime = Field(default_factory=lambda: datetime.now(UTC), sa_column=Column(DateTime(timezone=True), nullable=False))
     
     squad: Squad = Relationship(back_populates="members")
     player: Player = Relationship()
@@ -181,7 +182,7 @@ class SquadInvite(SQLModel, table=True):
     inviter_steam_id: str = Field(foreign_key="players.steam_id")
     invitee_discord_id: str = Field(index=True)
     status: str = Field(default="PENDING") # PENDING, ACCEPTED, REJECTED
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), sa_column=Column(DateTime(timezone=True), nullable=False))
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC), sa_column=Column(DateTime(timezone=True), nullable=False))
 
 
 class SteamLinkRedemption(SQLModel, table=True):
@@ -198,22 +199,22 @@ class BotConfig(SQLModel, table=True):
 
 class MembershipType(SQLModel, table=True):
     __tablename__ = "membership_types"
-    id: Optional[int] = Field(default=None, primary_key=True)
+    id: int | None = Field(default=None, primary_key=True)
     code: str = Field(unique=True, index=True)
     name: str
-    description: Optional[str] = Field(default=None)
-    price_usd: int = Field(default=0) # Stored in cents
+    description: str | None = Field(default=None)
+    price_usd: int | None = Field(default=0) # Stored in cents
     billing_type: str = Field(default="ONE_TIME") # "ONE_TIME" or "RECURRING"
     default_days: int = Field(default=30)         # 0 = permanente
-    max_quota: Optional[int] = Field(default=None)# None = ilimitado
-    role_id: Optional[int] = Field(default=None, foreign_key="roles.id", index=True)
-    server_id: Optional[int] = Field(default=None, foreign_key="rcon_servers.id")
+    max_quota: int | None = Field(default=None)# None = ilimitado
+    role_id: int | None = Field(default=None, foreign_key="roles.id", index=True)
+    server_id: int | None = Field(default=None, foreign_key="rcon_servers.id")
     is_active: bool = Field(default=True)
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), sa_column=Column(DateTime(timezone=True), nullable=False))
-    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), sa_column=Column(DateTime(timezone=True), nullable=False))
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC), sa_column=Column(DateTime(timezone=True), nullable=False))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC), sa_column=Column(DateTime(timezone=True), nullable=False))
 
     # Relationships
-    role: Optional[Role] = Relationship()
+    role: Role | None = Relationship()
 
 
 
@@ -221,7 +222,7 @@ class MembershipType(SQLModel, table=True):
 
 class RconServer(SQLModel, table=True):
     __tablename__ = "rcon_servers"
-    id: Optional[int] = Field(default=None, primary_key=True)
+    id: int | None = Field(default=None, primary_key=True)
     name: str = Field(index=True)
     ip: str
     port: int
@@ -229,8 +230,8 @@ class RconServer(SQLModel, table=True):
     scheme: str = Field(default="http") # "http" or "https"
     is_active: bool = Field(default=True)
     is_default: bool = Field(default=False)
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), sa_column=Column(DateTime(timezone=True), nullable=False))
-    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), sa_column=Column(DateTime(timezone=True), nullable=False))
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC), sa_column=Column(DateTime(timezone=True), nullable=False))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC), sa_column=Column(DateTime(timezone=True), nullable=False))
 
     @property
     def base_url(self) -> str:
@@ -239,43 +240,43 @@ class RconServer(SQLModel, table=True):
 
 class RewardItem(SQLModel, table=True):
     __tablename__ = "reward_items"
-    id: Optional[int] = Field(default=None, primary_key=True)
+    id: int | None = Field(default=None, primary_key=True)
     code: str = Field(unique=True, index=True)
     name: str
-    description: Optional[str] = Field(default=None)
+    description: str | None = Field(default=None)
     cost_points: int = Field(default=1)
     delivery_type: str = Field(default="AUTOMATIC") # AUTOMATIC or MANUAL_TICKET
     reward_type: str = Field(default="MEMBERSHIP")  # MEMBERSHIP, ROLE, CUSTOM
     reward_value: str = Field(default="")           # Membership type code, role code, or custom item
-    duration_days: Optional[int] = Field(default=None)
+    duration_days: int | None = Field(default=None)
     is_active: bool = Field(default=True)
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), sa_column=Column(DateTime(timezone=True), nullable=False))
-    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), sa_column=Column(DateTime(timezone=True), nullable=False))
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC), sa_column=Column(DateTime(timezone=True), nullable=False))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC), sa_column=Column(DateTime(timezone=True), nullable=False))
 
-    claims: List["RewardClaim"] = Relationship(back_populates="reward")
+    claims: list["RewardClaim"] = Relationship(back_populates="reward")
 
 
 class RewardClaim(SQLModel, table=True):
     __tablename__ = "reward_claims"
-    id: Optional[int] = Field(default=None, primary_key=True)
+    id: int | None = Field(default=None, primary_key=True)
     steam_id: str = Field(foreign_key="players.steam_id", index=True)
     reward_id: int = Field(foreign_key="reward_items.id", index=True)
     claim_code: str = Field(unique=True, index=True)
     status: str = Field(default="PENDING", index=True) # PENDING, DELIVERED, REFUNDED
     points_spent: int = Field(default=0)
-    claimed_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), sa_column=Column(DateTime(timezone=True), nullable=False))
+    claimed_at: datetime = Field(default_factory=lambda: datetime.now(UTC), sa_column=Column(DateTime(timezone=True), nullable=False))
     
     __table_args__ = (
         CheckConstraint("points_spent >= 0", name="check_claim_points_positive"),
     )
     
-    delivered_at: Optional[datetime] = Field(default=None, sa_column=Column(DateTime(timezone=True)))
-    delivered_by: Optional[str] = Field(default=None)
-    notes: Optional[str] = Field(default=None)
+    delivered_at: datetime | None = Field(default=None, sa_column=Column(DateTime(timezone=True)))
+    delivered_by: str | None = Field(default=None)
+    notes: str | None = Field(default=None)
 
     # Relationships
-    reward: Optional[RewardItem] = Relationship(back_populates="claims")
-    player: Optional[Player] = Relationship(back_populates="reward_claims")
+    reward: RewardItem | None = Relationship(back_populates="claims")
+    player: Player | None = Relationship(back_populates="reward_claims")
 
 
 # --- Database Setup ---

@@ -1,4 +1,3 @@
-import sys
 with open("apps/api_rcon/src/modules/v1/services/squads_service.py", "r", encoding="utf-8") as f:
     content = f.read()
 

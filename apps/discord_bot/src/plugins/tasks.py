@@ -1,13 +1,13 @@
-from typing import Any
-import crescent
-import time
 import asyncio
+import logging
+import time
+from typing import Any
+
+import crescent
 import hikari
 from crescent.ext import tasks
+
 from src.model import Model
-import os
-import datetime
-import logging
 
 plugin = crescent.Plugin[hikari.GatewayBot, Model]()
 logger = logging.getLogger("wardogs.tasks")
@@ -193,7 +193,7 @@ async def match_monitor():
             )
             
     except Exception as e:
-        logger.exception(f"[Match Monitor] Error en la automatización: {repr(e)}")
+        logger.exception(f"[Match Monitor] Error en la automatización: {e!r}")
         if plugin.app and plugin.app.is_alive:
             try:
                 await plugin.app.update_presence(
@@ -289,7 +289,7 @@ async def vip_monitor():
             del plugin.model.player_last_seen[sid]
                 
     except Exception as e:
-        logger.exception(f"[VIP Monitor] Error en la automatización: {repr(e)}")
+        logger.exception(f"[VIP Monitor] Error en la automatización: {e!r}")
 
 async def execute_membership_sync(
     app: hikari.GatewayBot,
@@ -531,7 +531,7 @@ async def membership_monitor():
     try:
         await execute_membership_sync(plugin.app, plugin.model)
     except Exception as e:
-        logger.exception(f"[Sync] Error en la automatización: {repr(e)}")
+        logger.exception(f"[Sync] Error en la automatización: {e!r}")
 
 @plugin.include
 @tasks.loop(seconds=5)
@@ -569,8 +569,7 @@ async def hacker_monitor_task():
             elapsed_minutes = elapsed_seconds / 60.0
             
             # Avoid division by very small numbers initially
-            if elapsed_minutes < 0.05:
-                elapsed_minutes = 0.05
+            elapsed_minutes = max(elapsed_minutes, 0.05)
                 
             kpm = (current_kills - start_kills) / elapsed_minutes
             
@@ -695,6 +694,6 @@ async def match_announcer_task():
         logger.info(f"[Match Announcer] Anunciada partida {match['id']}")
         
     except Exception as e:
-        logger.exception(f"[Match Announcer] Error: {repr(e)}")
+        logger.exception(f"[Match Announcer] Error: {e!r}")
 
 

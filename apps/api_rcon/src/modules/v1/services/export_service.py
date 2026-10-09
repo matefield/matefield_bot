@@ -1,23 +1,18 @@
 import csv
-import hashlib
-import hmac
 import io
 import logging
-import os
-import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Optional, Tuple
-from sqlmodel import select, col
+
+from sqlmodel import col, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from wardogs_config import ENVIRONMENT_SETTINGS
-from src.connections.databases.db import Player, Membership, Role, PlayerRole
+from src.connections.databases.db import Membership, Player, PlayerRole, Role
 
 logger = logging.getLogger("wardogs.export")
 
 
-def get_export_dir(base_dir: Optional[Path | str] = None) -> Path:
+def get_export_dir(base_dir: Path | str | None = None) -> Path:
     """Returns the export directory, creating it if needed."""
     if base_dir:
         path = Path(base_dir)
@@ -39,15 +34,15 @@ verify_export_download_token = verify_secure_download_token
 
 async def generate_memberships_csv(
     session: AsyncSession,
-    export_dir: Optional[Path | str] = None
-) -> Tuple[Path, str, int]:
+    export_dir: Path | str | None = None
+) -> tuple[Path, str, int]:
     """
     Generates an exterior-compatible CSV file containing all existing memberships
     and linked accounts with their roles, booster and founder status.
     Returns (file_path, filename, total_records).
     """
     target_dir = get_export_dir(export_dir)
-    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
     filename = f"memberships_export_{timestamp}.csv"
     csv_file = target_dir / filename
 
@@ -118,8 +113,8 @@ async def generate_memberships_csv(
             if first_founder_date is not None:
                 # Acquired founder via membership: valid from that purchase date onwards
                 if m.start_time:
-                    m_time = m.start_time if m.start_time.tzinfo else m.start_time.replace(tzinfo=timezone.utc)
-                    f_time = first_founder_date if first_founder_date.tzinfo else first_founder_date.replace(tzinfo=timezone.utc)
+                    m_time = m.start_time if m.start_time.tzinfo else m.start_time.replace(tzinfo=UTC)
+                    f_time = first_founder_date if first_founder_date.tzinfo else first_founder_date.replace(tzinfo=UTC)
                     is_founder = m_time >= f_time
                 else:
                     is_founder = True

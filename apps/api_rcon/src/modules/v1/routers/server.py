@@ -1,13 +1,12 @@
-from typing import Any, Dict, Optional
 from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel.ext.asyncio.session import AsyncSession
 from wardogs_schemas import v1 as schemas
 
-from src.security.guard import verify_api_key_guard
 from src.connections.databases.db import get_session
 from src.modules.v1.schemas.dtos import ConfigUpdateRequest
 from src.modules.v1.services.backup_service import create_database_sql_backup
 from src.modules.v1.services.server_service import ServerService
+from src.security.guard import verify_api_key_guard
 
 router = APIRouter(tags=["Server & RCON"])
 

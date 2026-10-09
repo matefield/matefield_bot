@@ -1,10 +1,8 @@
-from datetime import datetime, timezone
 import pytest
 from httpx import AsyncClient
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
-
-from src.connections.databases.db import Player, PlayerSession, RewardItem, RewardClaim, Membership
+from src.connections.databases.db import Membership, Player
 from src.modules.v1.services.rewards_service import RewardsService
 
 

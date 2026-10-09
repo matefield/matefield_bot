@@ -5,11 +5,9 @@ is_booster, payment_source, multi-rcon, membership_types) y preserva todos los
 jugadores vinculados, membresías activas y estadísticas.
 """
 
-import argparse
-import asyncio
 import logging
-from typing import Any, Dict, List
-from dotenv import dotenv_values
+from typing import Any
+
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 
@@ -17,7 +15,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(me
 logger = logging.getLogger("clone_prod")
 
 
-async def fetch_table_rows(engine, table_name: str) -> List[Dict[str, Any]]:
+async def fetch_table_rows(engine, table_name: str) -> list[dict[str, Any]]:
     async with engine.connect() as conn:
         res = await conn.execute(text(f"SELECT * FROM {table_name};"))
         columns = res.keys()
@@ -41,7 +39,10 @@ async def clone_data(target_name: str, target_url: str, prod_url: str):
     memberships_raw = await fetch_table_rows(prod_engine, "memberships")
     bot_config = await fetch_table_rows(prod_engine, "bot_config")
     membership_types = await fetch_table_rows(prod_engine, "membership_types")
-    membership_type_configs = await fetch_table_rows(prod_engine, "membership_type_configs")
+    try:
+        membership_type_configs = await fetch_table_rows(prod_engine, "membership_type_configs")
+    except Exception:
+        membership_type_configs = []
     matches = await fetch_table_rows(prod_engine, "matches")
     match_team_stats = await fetch_table_rows(prod_engine, "match_team_stats")
     match_player_stats = await fetch_table_rows(prod_engine, "match_player_stats")
@@ -75,10 +76,6 @@ async def clone_data(target_name: str, target_url: str, prod_url: str):
             m_copy["payment_source"] = "MANUAL"
         if "server_id" not in m_copy:
             m_copy["server_id"] = None
-        if "tebex_transaction_id" not in m_copy:
-            m_copy["tebex_transaction_id"] = None
-        if "tebex_subscription_id" not in m_copy:
-            m_copy["tebex_subscription_id"] = None
         memberships_adapted.append(m_copy)
 
     # 4. Insertar en Target dentro de una sola transacción
@@ -105,10 +102,13 @@ async def clone_data(target_name: str, target_url: str, prod_url: str):
         tables_to_truncate = [
             "match_player_stats", "match_team_stats", "player_sessions", "matches",
             "memberships", "player_roles", "membership_types", "rcon_servers",
-            "roles", "players", "teams", "bot_config", "membership_type_configs"
+            "roles", "players", "teams", "bot_config"
         ]
         for t in tables_to_truncate:
-            await conn.execute(text(f"TRUNCATE TABLE {t} CASCADE;"))
+            try:
+                await conn.execute(text(f"TRUNCATE TABLE {t} CASCADE;"))
+            except Exception:
+                pass
 
         # Insertar Teams
         if teams:
@@ -163,10 +163,10 @@ async def clone_data(target_name: str, target_url: str, prod_url: str):
             await conn.execute(text(
                 "INSERT INTO membership_types ("
                 "   id, code, name, description, price_usd, billing_type, default_days, max_quota, "
-                "   discord_role_id, server_id, is_active, tebex_package_id, created_at, updated_at"
+                "   role_id, server_id, is_active, created_at, updated_at"
                 ") VALUES ("
                 "   :id, :code, :name, :description, :price_usd, :billing_type, :default_days, :max_quota, "
-                "   :discord_role_id, :server_id, :is_active, :tebex_package_id, :created_at, :updated_at"
+                "   :role_id, :server_id, :is_active, :created_at, :updated_at"
                 ")"
             ), membership_types)
             await conn.execute(text("SELECT setval('membership_types_id_seq', (SELECT COALESCE(MAX(id), 1) FROM membership_types));"))
@@ -197,10 +197,10 @@ async def clone_data(target_name: str, target_url: str, prod_url: str):
             await conn.execute(text(
                 "INSERT INTO memberships ("
                 "   id, steam_id, type, start_date, end_date, is_active, role_granted_id, "
-                "   rcon_sync_status, is_booster, server_id, tebex_transaction_id, tebex_subscription_id, payment_source"
+                "   rcon_sync_status, is_booster, server_id, payment_source"
                 ") VALUES ("
                 "   :id, :steam_id, :type, :start_date, :end_date, :is_active, :role_granted_id, "
-                "   :rcon_sync_status, :is_booster, :server_id, :tebex_transaction_id, :tebex_subscription_id, :payment_source"
+                "   :rcon_sync_status, :is_booster, :server_id, :payment_source"
                 ")"
             ), memberships_adapted)
             await conn.execute(text("SELECT setval('memberships_id_seq', (SELECT COALESCE(MAX(id), 1) FROM memberships));"))

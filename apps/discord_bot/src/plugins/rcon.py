@@ -1,10 +1,10 @@
+import logging
+
 import crescent
 import hikari
-import logging
-from typing import Optional
 
-from src.model import Model
 from src.groups import rcon_group
+from src.model import Model
 from src.ui_utils import format_api_error
 
 logger = logging.getLogger("wardogs.rcon")

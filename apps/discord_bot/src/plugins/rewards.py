@@ -1,11 +1,11 @@
 import logging
-from typing import Optional
+
 import crescent
 import hikari
 
-from src.model import Model
+from src.groups import rewards_admin_group, rewards_group
 from src.hooks import admin_only, check_is_admin
-from src.groups import rewards_group, rewards_admin_group
+from src.model import Model
 
 logger = logging.getLogger(__name__)
 

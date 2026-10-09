@@ -1,20 +1,29 @@
 import hashlib
+import logging
 import re
 import urllib.parse
-import logging
+
 import httpx
-from fastapi import APIRouter, Request, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
-
 from wardogs_config import ENVIRONMENT_SETTINGS, is_prod
-from src.connections.databases.db import get_session, Player, BotConfig, SteamLinkRedemption
-from src.connections.apis.steam import get_player_summary
-from src.modules.v1.schemas.dtos import LinkAccountRequest
-from src.modules.v1.services import PlayersService, AuthPageService
-from src.security.tokens import generate_signed_payload_token, verify_signed_payload_token
 from wardogs_schemas.steam_token import verify_steam_link_token
+
+from src.connections.apis.steam import get_player_summary
+from src.connections.databases.db import (
+    BotConfig,
+    Player,
+    SteamLinkRedemption,
+    get_session,
+)
+from src.modules.v1.schemas.dtos import LinkAccountRequest
+from src.modules.v1.services import AuthPageService, PlayersService
+from src.security.tokens import (
+    generate_signed_payload_token,
+    verify_signed_payload_token,
+)
 
 router = APIRouter(prefix="/auth/steam", tags=["Auth"])
 logger = logging.getLogger("wardogs.auth")

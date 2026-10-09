@@ -1,16 +1,14 @@
-import asyncio
-import crescent
-import hikari
 import logging
 
+import crescent
+import hikari
+
 logger = logging.getLogger(__name__)
-from src.model import Model
 from src.hooks import admin_only
+from src.model import Model
 
 plugin = crescent.Plugin[hikari.GatewayBot, Model]()
 from src.groups import leaderboard_group, player_group, server_group, special_role_group
-
-
 
 
 @plugin.include
@@ -190,8 +188,7 @@ async def on_interaction(event: hikari.InteractionCreateEvent) -> None:
         linked = {"al": "all", "li": "linked", "un": "unlinked"}.get(l_char, "all")
         
         new_page = current_page - 1 if action == "prev" else current_page + 1
-        if new_page < 1:
-            new_page = 1
+        new_page = max(new_page, 1)
             
         try:
             res = await plugin.model.api.get_paginated_players(page=new_page, limit=10, linked=linked)
@@ -286,8 +283,7 @@ async def on_interaction(event: hikari.InteractionCreateEvent) -> None:
         current_page = int(parts[2])
         
         new_page = current_page - 1 if action == "prev" else current_page + 1
-        if new_page < 1:
-            new_page = 1
+        new_page = max(new_page, 1)
             
         try:
             res = await plugin.model.api.get_paginated_matches(page=new_page, limit=10)

@@ -1,10 +1,9 @@
 import pytest
 from httpx import AsyncClient
 from sqlmodel.ext.asyncio.session import AsyncSession
-from wardogs_schemas import v1 as schemas
-
+from src.connections.apis.rcon import RCONClient, RCONManager
 from src.connections.databases.db import RconServer
-from src.connections.apis.rcon import RCONManager, RCONClient
+from wardogs_schemas import v1 as schemas
 
 
 @pytest.mark.asyncio
@@ -98,8 +97,8 @@ async def test_rcon_manager_fallback_server_parses_url_safely():
 
 @pytest.mark.asyncio
 async def test_delete_rcon_server_detaches_memberships_and_reassigns_default(session: AsyncSession):
-    from src.modules.v1.services.rcon_servers_service import RconServersService
     from src.connections.databases.db import Membership, MembershipType, Player
+    from src.modules.v1.services.rcon_servers_service import RconServersService
 
     # 1. Create two servers
     s1 = RconServer(name="Server 1", ip="127.0.0.1", port=1111, password="p1", is_default=True, is_active=True)

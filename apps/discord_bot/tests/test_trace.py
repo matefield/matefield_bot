@@ -1,10 +1,8 @@
-import pytest
 import hikari
+import pytest
 from src.trace import (
-    TraceEvent,
-    EventCollectorObserver,
-    NullTracer,
     DevActionTracer,
+    NullTracer,
     get_tracer,
 )
 

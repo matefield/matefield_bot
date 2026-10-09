@@ -1,10 +1,10 @@
 import os
 from pathlib import Path
-from typing import Tuple
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
-def resolve_env_file() -> Tuple[str, ...]:
+def resolve_env_file() -> tuple[str, ...]:
     """
     Resolves the .env file path dynamically.
     Priority:

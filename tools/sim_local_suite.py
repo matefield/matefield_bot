@@ -6,10 +6,9 @@ Executes against the local Docker Compose environment (PostgreSQL + Mock RCON + 
 """
 
 import asyncio
+import logging
 import os
 import sys
-import logging
-from typing import Dict, Any
 
 # Ensure proper PYTHONPATH
 sys.path.insert(0, os.path.abspath("."))
@@ -17,9 +16,10 @@ sys.path.insert(0, os.path.abspath("packages/wardogs_schemas/src"))
 sys.path.insert(0, os.path.abspath("packages/wardogs_config/src"))
 
 import httpx
-from apps.discord_bot.src.api_client import APIClient
-from wardogs_schemas.steam_token import create_steam_link_token
 from wardogs_config import BOT_SETTINGS
+from wardogs_schemas.steam_token import create_steam_link_token
+
+from apps.discord_bot.src.api_client import APIClient
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("sim_suite")

@@ -1,4 +1,5 @@
 import crescent
+
 from src.hooks import admin_only
 
 membership_group = crescent.Group("membership", "Administración de membresías", hooks=[admin_only])

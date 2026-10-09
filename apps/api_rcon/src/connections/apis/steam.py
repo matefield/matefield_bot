@@ -11,7 +11,7 @@ loaded and therefore always returned None.
 """
 import logging
 import os
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import aiohttp
 
@@ -21,10 +21,10 @@ _STEAM_API_URL = "https://api.steampowered.com/ISteamUser/GetPlayerSummaries/v00
 _CHUNK_SIZE = 100  # Steam API hard limit per request
 
 # Module-level session, lazily created and reused across requests.
-_session: Optional[aiohttp.ClientSession] = None
+_session: aiohttp.ClientSession | None = None
 
 
-def _get_api_key() -> Optional[str]:
+def _get_api_key() -> str | None:
     """Reads STEAM_WEB_API_KEY from centralized config or environment."""
     from wardogs_config import ENVIRONMENT_SETTINGS
     return ENVIRONMENT_SETTINGS.SECURITY_SETTINGS.STEAM_WEB_API_KEY or os.environ.get("STEAM_WEB_API_KEY")
@@ -38,13 +38,13 @@ async def _get_session() -> aiohttp.ClientSession:
     return _session
 
 
-async def get_player_summary(steam_id: str) -> Optional[Dict[str, Any]]:
+async def get_player_summary(steam_id: str) -> dict[str, Any] | None:
     """Returns the Steam profile summary for a single player, or None on failure."""
     summaries = await get_player_summaries([steam_id])
     return summaries.get(steam_id)
 
 
-async def get_player_summaries(steam_ids: List[str]) -> Dict[str, Dict[str, Any]]:
+async def get_player_summaries(steam_ids: list[str]) -> dict[str, dict[str, Any]]:
     """
     Returns a ``{steamid: summary_dict}`` map for up to 100 Steam IDs per chunk.
 
@@ -56,7 +56,7 @@ async def get_player_summaries(steam_ids: List[str]) -> Dict[str, Dict[str, Any]
         return {}
 
     session = await _get_session()
-    results: Dict[str, Dict[str, Any]] = {}
+    results: dict[str, dict[str, Any]] = {}
 
     for i in range(0, len(steam_ids), _CHUNK_SIZE):
         chunk = steam_ids[i : i + _CHUNK_SIZE]

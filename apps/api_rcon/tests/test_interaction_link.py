@@ -1,10 +1,11 @@
 from unittest.mock import AsyncMock, MagicMock, patch
 from urllib.parse import urlparse
+
 import pytest
 from src.connections.databases.db import Player
 from src.security.tokens import generate_signed_payload_token
-from wardogs_schemas.steam_token import create_steam_link_token, verify_steam_link_token
 from test_steam_auth import prepare_callback
+from wardogs_schemas.steam_token import create_steam_link_token, verify_steam_link_token
 
 A, B = "123456789012345678", "223456789012345678"
 S, T = "76561198000000888", "76561198000000999"

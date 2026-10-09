@@ -1,4 +1,3 @@
-import hikari
 
 class UIColors:
     GOLD = 0xF1C40F

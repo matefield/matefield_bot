@@ -1,10 +1,10 @@
 import pytest
 from fastapi import HTTPException
-from sqlmodel.ext.asyncio.session import AsyncSession
 from sqlmodel import select
-
-from src.connections.databases.db import Squad, SquadMember, Player
+from sqlmodel.ext.asyncio.session import AsyncSession
+from src.connections.databases.db import Player, SquadMember
 from src.modules.v1.services.squads_service import SquadsService
+
 
 @pytest.mark.asyncio
 async def test_create_squad(session: AsyncSession):

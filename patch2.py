@@ -1,4 +1,3 @@
-import sys
 with open("apps/discord_bot/src/api_client.py", "r", encoding="utf-8") as f:
     content = f.read()
 

@@ -1,15 +1,21 @@
-from datetime import datetime, timezone, timedelta
+from datetime import UTC, datetime, timedelta
+
 import pytest
 from httpx import AsyncClient
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
-
-from src.connections.databases.db import Player, Membership, Role, PlayerRole, MembershipType
+from src.connections.databases.db import (
+    Membership,
+    MembershipType,
+    Player,
+    PlayerRole,
+    Role,
+)
 
 
 @pytest.mark.asyncio
 async def test_edit_membership(client: AsyncClient, session: AsyncSession):
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     p = Player(steam_id="123")
     m = Membership(
         steam_id="123",
@@ -39,7 +45,7 @@ async def test_edit_membership(client: AsyncClient, session: AsyncSession):
 @pytest.mark.asyncio
 async def test_delete_membership(client: AsyncClient, session: AsyncSession):
     p = Player(steam_id="123")
-    m = Membership(steam_id="123", membership_type="VIP_EXPRESS", is_active=True, start_time=datetime.now(timezone.utc))
+    m = Membership(steam_id="123", membership_type="VIP_EXPRESS", is_active=True, start_time=datetime.now(UTC))
     session.add(p)
     session.add(m)
     await session.commit()
@@ -65,7 +71,7 @@ async def test_remove_special_role(client: AsyncClient, session: AsyncSession):
     session.add(pr)
     await session.commit()
 
-    response = await client.delete(f"/api/v1/db/players/123/roles/VIP_EXPRESS")
+    response = await client.delete("/api/v1/db/players/123/roles/VIP_EXPRESS")
     assert response.status_code == 200
 
     deleted_pr = (await session.exec(select(PlayerRole).where(PlayerRole.steam_id == "123", PlayerRole.role_id == r.id))).first()
@@ -78,7 +84,7 @@ async def test_edit_player(client: AsyncClient, session: AsyncSession):
     session.add(p)
     await session.commit()
 
-    response = await client.put(f"/api/v1/db/players/123", json={
+    response = await client.put("/api/v1/db/players/123", json={
         "discord_id": "789",
         "custom_welcome_message": "Adios"
     })
@@ -91,7 +97,7 @@ async def test_edit_player(client: AsyncClient, session: AsyncSession):
 
 @pytest.mark.asyncio
 async def test_edit_membership_dynamic_date_adjustment(client: AsyncClient, session: AsyncSession):
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     p = Player(steam_id="dynamic_user_1")
     # Register membership types so edit_membership resolves days from DB
     mt_express = MembershipType(code="VIP_EXPRESS", name="VIP Express", default_days=15, is_active=True)
@@ -132,7 +138,7 @@ async def test_edit_membership_dynamic_date_adjustment(client: AsyncClient, sess
 
 @pytest.mark.asyncio
 async def test_get_paginated_memberships_filtered_by_discord_id(client: AsyncClient, session: AsyncSession):
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     p1 = Player(steam_id="steam_d1", discord_id="discord_999")
     p2 = Player(steam_id="steam_d2", discord_id="discord_888")
     m1 = Membership(steam_id="steam_d1", membership_type="VIP_COMUN", is_active=True, start_time=now)

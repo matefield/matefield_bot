@@ -1,9 +1,9 @@
-from wardogs_schemas import v1 as schemas
-import pytest
-import aiohttp
 import importlib.util
 from pathlib import Path
-from unittest.mock import AsyncMock, patch, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import aiohttp
+import pytest
 
 client_path = Path(__file__).resolve().parent.parent / "src" / "api_client.py"
 spec = importlib.util.spec_from_file_location("discord_bot_api_client", client_path)

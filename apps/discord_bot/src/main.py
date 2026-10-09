@@ -1,8 +1,10 @@
 import logging
+
 import colorlog
-import hikari
 import crescent
+import hikari
 from wardogs_config import BOT_SETTINGS
+
 from src.model import Model
 
 # Configurar logs coloridos

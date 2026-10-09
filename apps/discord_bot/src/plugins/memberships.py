@@ -3,12 +3,13 @@ import logging
 import math
 import time
 from typing import Any
+
 import crescent
 import hikari
 
-from src.model import Model
-from src.hooks import admin_only
 from src.groups import membership_group, membership_type_group, player_group
+from src.hooks import admin_only
+from src.model import Model
 from src.trace import get_tracer
 
 logger = logging.getLogger(__name__)
@@ -326,8 +327,7 @@ async def on_membership_button_click(event: hikari.InteractionCreateEvent) -> No
         is_next = custom_id.startswith("mem_next_")
         new_page = current_page + 1 if is_next else current_page - 1
         
-        if new_page < 1:
-            new_page = 1
+        new_page = max(new_page, 1)
             
         try:
             res = await plugin.model.api.get_paginated_memberships(page=new_page, limit=10)
@@ -384,8 +384,7 @@ async def on_membership_button_click(event: hikari.InteractionCreateEvent) -> No
         limit = 5
 
         new_page = current_page - 1 if action == "prev" else current_page + 1
-        if new_page < 1:
-            new_page = 1
+        new_page = max(new_page, 1)
 
         try:
             res = await plugin.model.api.get_paginated_memberships(page=new_page, limit=limit, discord_id=str(target_discord_id))
@@ -393,8 +392,7 @@ async def on_membership_button_click(event: hikari.InteractionCreateEvent) -> No
             total = res.get("total", 0)
             total_pages = max(1, math.ceil(total / limit)) if total > 0 else 1
 
-            if new_page > total_pages:
-                new_page = total_pages
+            new_page = min(new_page, total_pages)
 
             embed, components = build_player_memberships_view(
                 plugin.app,
@@ -438,8 +436,9 @@ class DbEditMembership:
                 is_active=self.activa,
                 is_booster=self.booster
             )
-            from src.plugins.tasks import execute_membership_sync
             import typing
+
+            from src.plugins.tasks import execute_membership_sync
             asyncio.create_task(execute_membership_sync(typing.cast(hikari.GatewayBot, ctx.app), plugin.model, target_guild_id=ctx.guild_id))
             await ctx.respond(f"✅ Membresía ID {self.id_membresia} actualizada exitosamente. 🔄 Sincronizando en segundo plano...")
         except Exception as e:
@@ -457,8 +456,9 @@ class DbRemoveMembership:
         await ctx.defer()
         try:
             await plugin.model.api.delete_membership(self.id_membresia)
-            from src.plugins.tasks import execute_membership_sync
             import typing
+
+            from src.plugins.tasks import execute_membership_sync
             asyncio.create_task(execute_membership_sync(typing.cast(hikari.GatewayBot, ctx.app), plugin.model, target_guild_id=ctx.guild_id))
             await ctx.respond(f"✅ Membresía ID {self.id_membresia} eliminada exitosamente. 🔄 Sincronizando en segundo plano...")
         except Exception as e:
@@ -604,8 +604,9 @@ class ExtenderMembresia:
         await ctx.defer()
         try:
             await plugin.model.api.edit_membership(membership_id=self.membership_id, add_days=self.dias)
-            from src.plugins.tasks import execute_membership_sync
             import typing
+
+            from src.plugins.tasks import execute_membership_sync
             asyncio.create_task(execute_membership_sync(typing.cast(hikari.GatewayBot, ctx.app), plugin.model, target_guild_id=ctx.guild_id))
             await ctx.respond(f"✅ Membresía #{self.membership_id} extendida por {self.dias} días exitosamente. 🔄 Sincronizando en segundo plano...")
         except Exception as e:

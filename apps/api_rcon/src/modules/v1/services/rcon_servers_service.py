@@ -1,14 +1,15 @@
 import asyncio
 import logging
 import time
-from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from datetime import UTC, datetime
+from typing import Any
+
 from fastapi import HTTPException
-from sqlmodel import select, col, or_
+from sqlmodel import col, or_, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from src.connections.databases.db import RconServer, Membership
-from src.connections.apis.rcon import RCONManager, RCONClient
+from src.connections.apis.rcon import RCONManager
+from src.connections.databases.db import Membership, RconServer
 from src.modules.v1.schemas.dtos import CreateRconServerRequest, UpdateRconServerRequest
 
 logger = logging.getLogger("wardogs.rcon_servers")
@@ -16,12 +17,12 @@ logger = logging.getLogger("wardogs.rcon_servers")
 
 class RconServersService:
     @staticmethod
-    async def list_servers(session: AsyncSession, check_health: bool = True) -> List[Dict[str, Any]]:
+    async def list_servers(session: AsyncSession, check_health: bool = True) -> list[dict[str, Any]]:
         stmt = select(RconServer).order_by(col(RconServer.is_default).desc(), col(RconServer.id))
         servers = (await session.exec(stmt)).all()
 
-        async def fetch_server_data(s: RconServer) -> Dict[str, Any]:
-            data: Dict[str, Any] = {
+        async def fetch_server_data(s: RconServer) -> dict[str, Any]:
+            data: dict[str, Any] = {
                 "id": s.id,
                 "name": s.name,
                 "ip": s.ip,
@@ -58,7 +59,7 @@ class RconServersService:
         return list(results)
 
     @staticmethod
-    async def create_server(req: CreateRconServerRequest, session: AsyncSession) -> Dict[str, Any]:
+    async def create_server(req: CreateRconServerRequest, session: AsyncSession) -> dict[str, Any]:
         # If set as default, unset other defaults
         if req.is_default:
             existing_defaults = (await session.exec(select(RconServer).where(RconServer.is_default == True))).all()
@@ -82,7 +83,7 @@ class RconServersService:
         if not server_name:
             server_name = f"Servidor {req.ip}:{req.port}"
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         server = RconServer(
             name=server_name,
             ip=req.ip.strip(),
@@ -114,7 +115,7 @@ class RconServersService:
         }
 
     @staticmethod
-    async def get_server(server_id: int, session: AsyncSession) -> Dict[str, Any]:
+    async def get_server(server_id: int, session: AsyncSession) -> dict[str, Any]:
         server = await session.get(RconServer, server_id)
         if not server:
             raise HTTPException(status_code=404, detail=f"Servidor RCON ID {server_id} no encontrado")
@@ -132,7 +133,7 @@ class RconServersService:
         }
 
     @staticmethod
-    async def update_server(server_id: int, req: UpdateRconServerRequest, session: AsyncSession) -> Dict[str, Any]:
+    async def update_server(server_id: int, req: UpdateRconServerRequest, session: AsyncSession) -> dict[str, Any]:
         server = await session.get(RconServer, server_id)
         if not server:
             raise HTTPException(status_code=404, detail=f"Servidor RCON ID {server_id} no encontrado")
@@ -158,7 +159,7 @@ class RconServersService:
         if req.is_default is not None:
             server.is_default = req.is_default
 
-        server.updated_at = datetime.now(timezone.utc)
+        server.updated_at = datetime.now(UTC)
         session.add(server)
         await session.commit()
         await session.refresh(server)
@@ -179,13 +180,14 @@ class RconServersService:
         }
 
     @staticmethod
-    async def delete_server(server_id: int, session: AsyncSession) -> Dict[str, Any]:
+    async def delete_server(server_id: int, session: AsyncSession) -> dict[str, Any]:
         server = await session.get(RconServer, server_id)
         if not server:
             raise HTTPException(status_code=404, detail=f"Servidor RCON ID {server_id} no encontrado")
 
         # Detach foreign keys in memberships and membership_types
         from sqlmodel import update
+
         from src.connections.databases.db import Membership, MembershipType
         await session.exec(
             update(Membership).where(Membership.server_id == server_id).values(server_id=None)
@@ -208,7 +210,7 @@ class RconServersService:
         return {"ok": True, "message": f"Servidor RCON '{server.name}' eliminado"}
 
     @staticmethod
-    async def test_server(server_id: int, session: AsyncSession) -> Dict[str, Any]:
+    async def test_server(server_id: int, session: AsyncSession) -> dict[str, Any]:
         server = await session.get(RconServer, server_id)
         if not server:
             raise HTTPException(status_code=404, detail=f"Servidor RCON ID {server_id} no encontrado")
@@ -240,7 +242,7 @@ class RconServersService:
             }
 
     @staticmethod
-    async def sync_all_servers(session: AsyncSession) -> Dict[str, Any]:
+    async def sync_all_servers(session: AsyncSession) -> dict[str, Any]:
         active_servers = await RCONManager.get_all_active_servers(session)
 
         ban_stmt = select(Ban.steam_id).where(Ban.is_active == True).distinct()
@@ -260,7 +262,7 @@ class RconServersService:
                 ).distinct()
             vip_ids = list(set((await session.exec(vip_stmt)).all()))
 
-            server_res: Dict[str, Any] = {
+            server_res: dict[str, Any] = {
                 "server_id": s_info.id,
                 "server_name": s_info.name,
                 "base_url": s_info.base_url,

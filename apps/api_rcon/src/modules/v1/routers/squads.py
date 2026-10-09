@@ -1,19 +1,21 @@
-from typing import List, Dict, Any
-from fastapi import APIRouter, Depends, HTTPException
+from typing import Any
+
+from fastapi import APIRouter, Depends
 from sqlmodel.ext.asyncio.session import AsyncSession
+from wardogs_schemas import v1 as schemas
+
 from src.connections.databases.db import get_session
 from src.modules.v1.services.squads_service import SquadsService
 from src.security.guard import verify_api_key_guard
-from wardogs_schemas import v1 as schemas
 
 router = APIRouter(tags=["Squads"], prefix="/db/squads")
 
-@router.post("", response_model=Dict[str, Any], dependencies=[Depends(verify_api_key_guard)])
+@router.post("", response_model=dict[str, Any], dependencies=[Depends(verify_api_key_guard)])
 async def create_squad(name: str, tag: str, leader_steam_id: str, session: AsyncSession = Depends(get_session)):
     squad = await SquadsService.create_squad(name, tag, leader_steam_id, session)
     return {"id": squad.id, "name": squad.name, "tag": squad.tag}
 
-@router.get("/leaderboard", response_model=List[Dict[str, Any]])
+@router.get("/leaderboard", response_model=list[dict[str, Any]])
 async def get_squad_leaderboard(sort_by: str = "kills", session: AsyncSession = Depends(get_session)):
     squads = await SquadsService.get_leaderboard(sort_by, session)
     return [
@@ -28,7 +30,7 @@ async def get_squad_leaderboard(sort_by: str = "kills", session: AsyncSession = 
         for s in squads
     ]
 
-@router.get("/by-tag/{tag}", response_model=Dict[str, Any])
+@router.get("/by-tag/{tag}", response_model=dict[str, Any])
 async def get_squad_by_tag(tag: str, session: AsyncSession = Depends(get_session)):
     squad = await SquadsService.get_squad_by_name_or_tag(tag, session)
     return {
@@ -42,7 +44,7 @@ async def get_squad_by_tag(tag: str, session: AsyncSession = Depends(get_session
         "total_matches_played": squad.total_matches_played
     }
 
-@router.get("/by-player/{steam_id}", response_model=List[Dict[str, Any]])
+@router.get("/by-player/{steam_id}", response_model=list[dict[str, Any]])
 async def get_player_squads(steam_id: str, session: AsyncSession = Depends(get_session)):
     squads = await SquadsService.get_player_squads(steam_id, session)
     return [
@@ -59,12 +61,12 @@ async def get_player_squads(steam_id: str, session: AsyncSession = Depends(get_s
         for squad in squads
     ]
 
-@router.get("/{squad_id}/members", response_model=List[Dict[str, Any]])
+@router.get("/{squad_id}/members", response_model=list[dict[str, Any]])
 async def get_squad_members(squad_id: str, session: AsyncSession = Depends(get_session)):
     players = await SquadsService.get_squad_members(squad_id, session)
     return [{"steam_id": p.steam_id, "in_game_name": p.in_game_name, "discord_id": p.discord_id} for p in players]
 
-@router.get("/{squad_id}/internal-leaderboard", response_model=List[Dict[str, Any]])
+@router.get("/{squad_id}/internal-leaderboard", response_model=list[dict[str, Any]])
 async def get_squad_internal_leaderboard(squad_id: str, sort_by: str = "kills", session: AsyncSession = Depends(get_session)):
     return await SquadsService.get_squad_internal_leaderboard(squad_id, sort_by, session)
 

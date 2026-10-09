@@ -424,6 +424,6 @@ async def poll_rcon(state: SyncEngineState | None = None):
 
             await asyncio.sleep(sleep_time)
 
-        except Exception as e: # noqa: BLE001
+        except Exception as e:
             logger.exception("[Match Engine] Error polling RCON in sync_engine: %s", e)
             await asyncio.sleep(DEFAULT_POLL_INTERVAL_SECONDS)

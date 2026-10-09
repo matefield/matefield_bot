@@ -1,23 +1,25 @@
-import crescent
-import hikari
 import logging
 import re
-from typing import Optional
+
+import crescent
+import hikari
+
+from src.hooks import admin_only, check_is_admin
 from src.model import Model
-from src.hooks import check_is_admin, admin_only
 
 logger = logging.getLogger(__name__)
 
-from src.groups import player_group
-from wardogs_schemas.steam_token import create_steam_link_token
 from wardogs_config import BOT_SETTINGS
-from src.trace import get_tracer
+from wardogs_schemas.steam_token import create_steam_link_token
+
+from src.groups import player_group
 from src.plugins.tasks import sync_single_user_roles
+from src.trace import get_tracer
 
 plugin = crescent.Plugin[hikari.GatewayBot, Model]()
 
 
-def _parse_steam_emoji(raw: Optional[str]) -> hikari.UnicodeEmoji | hikari.CustomEmoji:
+def _parse_steam_emoji(raw: str | None) -> hikari.UnicodeEmoji | hikari.CustomEmoji:
     val = (raw or "").strip().strip("\"'")
     if not val:
         return hikari.UnicodeEmoji("🎮")
@@ -43,7 +45,7 @@ COLOR_PROFILE_DARK = 0x2B2D31
 MAX_WELCOME_MESSAGE_LENGTH = 60
 
 
-def _resolve_guild_id(guild_id: Optional[hikari.Snowflake] = None) -> Optional[hikari.Snowflake]:
+def _resolve_guild_id(guild_id: hikari.Snowflake | None = None) -> hikari.Snowflake | None:
     """Resuelve el ID de la guild proporcionada o retorna la primera encontrada en caché."""
     if guild_id:
         return guild_id
@@ -56,7 +58,7 @@ def _resolve_guild_id(guild_id: Optional[hikari.Snowflake] = None) -> Optional[h
     return None
 
 
-def _build_user_steam_link(user: hikari.User, guild_id: Optional[hikari.Snowflake] = None) -> str:
+def _build_user_steam_link(user: hikari.User, guild_id: hikari.Snowflake | None = None) -> str:
     """Genera una URL firmada de OpenID para vincular Steam con Discord de forma segura."""
     secret_key = plugin.model.api.api_key
     resolved_guild = _resolve_guild_id(guild_id)
@@ -311,7 +313,7 @@ class SetWelcomeMessage:
         has_vip = "VIP" in steam_data.roles or "ADMIN" in steam_data.roles or steam_data.role in ["VIP", "ADMIN"]
         
         if not has_vip:
-            await ctx.respond(f"❌ El jugador no tiene una membresía VIP o ADMIN activa. No se puede establecer el mensaje.")
+            await ctx.respond("❌ El jugador no tiene una membresía VIP o ADMIN activa. No se puede establecer el mensaje.")
             return
             
         await plugin.model.api.set_welcome_message(str(target_steam), self.message)

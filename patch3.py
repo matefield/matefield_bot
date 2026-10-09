@@ -1,4 +1,3 @@
-import sys
 with open("apps/discord_bot/src/plugins/squads.py", "r", encoding="utf-8") as f:
     content = f.read()
 

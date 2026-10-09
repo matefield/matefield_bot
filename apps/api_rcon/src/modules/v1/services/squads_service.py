@@ -1,12 +1,11 @@
 import logging
-import uuid
-from typing import Dict, Any, List, Optional
-from datetime import datetime, timezone
+from typing import Any
+
 from fastapi import HTTPException
-from sqlmodel import select, col, func
+from sqlmodel import col, func, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from src.connections.databases.db import Squad, SquadMember, SquadInvite, Player
+from src.connections.databases.db import Player, Squad, SquadInvite, SquadMember
 
 logger = logging.getLogger("wardogs.squads")
 
@@ -66,7 +65,7 @@ class SquadsService:
         return squad
 
     @staticmethod
-    async def get_player_squads(steam_id: str, session: AsyncSession) -> List[Squad]:
+    async def get_player_squads(steam_id: str, session: AsyncSession) -> list[Squad]:
         members = (await session.exec(select(SquadMember).where(SquadMember.steam_id == steam_id))).all()
         if not members:
             return []
@@ -76,7 +75,7 @@ class SquadsService:
         return squads
 
     @staticmethod
-    async def get_squad_members(squad_id: str, session: AsyncSession) -> List[Player]:
+    async def get_squad_members(squad_id: str, session: AsyncSession) -> list[Player]:
         # Returns the players in a squad
         members = (await session.exec(select(SquadMember).where(SquadMember.squad_id == squad_id))).all()
         if not members:
@@ -130,7 +129,7 @@ class SquadsService:
         await session.commit()
 
     @staticmethod
-    async def get_leaderboard(sort_by: str, session: AsyncSession, limit: int = 10) -> List[Squad]:
+    async def get_leaderboard(sort_by: str, session: AsyncSession, limit: int = 10) -> list[Squad]:
         order_col = col(Squad.total_kills).desc()
         if sort_by == "deaths":
             order_col = col(Squad.total_deaths).desc()
@@ -144,7 +143,7 @@ class SquadsService:
         )).all()
 
     @staticmethod
-    async def get_squad_internal_leaderboard(squad_id: str, sort_by: str, session: AsyncSession) -> List[Dict[str, Any]]:
+    async def get_squad_internal_leaderboard(squad_id: str, sort_by: str, session: AsyncSession) -> list[dict[str, Any]]:
         # Obtiene las estadísticas históricas con este equipo
         from src.connections.databases.db import MatchPlayerStats, Player
         

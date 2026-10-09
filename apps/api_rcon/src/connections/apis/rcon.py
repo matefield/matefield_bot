@@ -9,15 +9,16 @@ Provides:
 - ``_update_ini_array`` / ``_is_array_directive``: helpers for patching
   Unreal Engine INI arrays (reserved/banned slots) in-place.
 """
-import aiohttp
+import asyncio
 import json
 import time
-import asyncio
-from typing import Any, Optional
-from urllib.parse import urlparse, quote
-from sqlmodel import select, col
-from wardogs_schemas import v1 as schemas
+from typing import Any
+from urllib.parse import quote, urlparse
+
+import aiohttp
+from sqlmodel import col, select
 from wardogs_config import ENVIRONMENT_SETTINGS
+from wardogs_schemas import v1 as schemas
 
 # Networking and Cache Constants
 DEFAULT_RCON_CACHE_TTL = 3.0
@@ -62,7 +63,7 @@ class ReentrantAsyncLock:
     """An asyncio-compatible reentrant lock allowing the same task to acquire multiple times."""
     def __init__(self):
         self._lock = asyncio.Lock()
-        self._owner: Optional[asyncio.Task] = None
+        self._owner: asyncio.Task | None = None
         self._count: int = 0
 
     async def acquire(self) -> None:
@@ -103,7 +104,7 @@ class RCONClient:
         self._cache_lock = asyncio.Lock()
         self._config_lock = ReentrantAsyncLock()
         self._cache_ttl = DEFAULT_RCON_CACHE_TTL
-        self._session: Optional[aiohttp.ClientSession] = None
+        self._session: aiohttp.ClientSession | None = None
 
     async def _get_session(self) -> aiohttp.ClientSession:
         if self._session is None or self._session.closed:
@@ -191,11 +192,7 @@ class RCONClient:
         bans = []
         for line in lines:
             line = line.strip()
-            if line.startswith('.DefaultBannedPlayerIds='):
-                val = line.split('=', 1)[1].strip().strip('"\'')
-                if val:
-                    bans.append(val)
-            elif line.startswith('+DefaultBannedPlayerIds='):
+            if line.startswith('.DefaultBannedPlayerIds=') or line.startswith('+DefaultBannedPlayerIds='):
                 val = line.split('=', 1)[1].strip().strip('"\'')
                 if val:
                     bans.append(val)

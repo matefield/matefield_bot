@@ -1,12 +1,10 @@
 import asyncio
+import logging
 import re
+import time
 
 import crescent
 import hikari
-import time
-import csv
-import io
-import logging
 
 logger = logging.getLogger("wardogs.admin")
 
@@ -15,7 +13,7 @@ from src.model import Model
 from src.trace import get_tracer
 
 plugin = crescent.Plugin[hikari.GatewayBot, Model]()
-from src.groups import reserved_group, server_group, quota_group, hacker_group
+from src.groups import hacker_group, quota_group, reserved_group, server_group
 
 # UI Theme Colors and Message Limits
 COLOR_BLUE = 0x3498DB

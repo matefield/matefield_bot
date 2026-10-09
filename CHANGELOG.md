@@ -7,8 +7,25 @@ y este proyecto se adhiere a [Semantic Versioning (SemVer 2.0.0)](https://semver
 
 ---
 
-## [1.5.3] - 2026-10-04
+## [1.6.0] - 2026-10-08
 
+### Añadido
+- **Sistema de Pelotones (Squads)**: Soporte completo para crear, gestionar y unirse a escuadrones a través de invitaciones y códigos en Discord (Comandos `/squad`).
+- **Sistema de Seeding y Recompensas Automatizadas**: Nuevo motor de recompensas que premia a los jugadores (1 punto por minuto) por poblar el servidor (Seeding) cuando la cantidad de jugadores activos está entre el mínimo y el máximo configurado, detectando estados de "limbo" y penalizando a quienes abandonan el servidor sin jugar antes de que se alcance la cuota.
+- **Auditoría de Clonado de Base de Datos**: Creación de herramientas para clonación de bases de datos seguras (`clone_prod_to_env.py`) ignorando esquemas heredados y obsoletos, permitiendo pruebas rigurosas en entornos de staging/dev.
+
+### Cambiado
+- **Desvinculación Completa de Tebex**: Limpieza a nivel base de datos, código y documentación (incluyendo remoción de variables de entorno, migraciones antiguas, endpoints y lógicas de reembolsos/disputas) para eliminar Tebex definitivamente.
+- **Esquema de Precios de Membresías**: Las membresías permanentes y el rol "VIP Seed" ahora soportan costo `$0` (nullable), quitando restricciones estrictas previas en `price_usd`.
+
+### Corregido
+- **Corrupción Aritmética de Puntos**: Se corrigió un error grave en `RewardsService` donde los puntos y logs insertaban literales de expresiones binarias (`BinaryExpression`) en vez de sus valores atómicos calculados, lo que envenenaba la base de datos de PostgreSQL.
+- **Gracia de Desconexiones (Seeding Grace Period)**: Se refinó y documentó la constante `SEEDING_FAILURE_GRACE_PERIOD_SECONDS` (90 segundos), consolidando los tiempos de gracia de desconexión sin castigos y limpiando números mágicos hardcodeados.
+- **Limpieza de Linting Crítico**: Se solucionaron múltiples excepciones "ciegas" (blind exceptions `try-except-pass`) y problemas en el uso de SQLAlchemy en todo el proyecto.
+
+---
+
+## [1.5.3] - 2026-10-04
 ### Añadido
 - **UI de Seeding**: Se agregó al comando `/rewards balance` en Discord el tiempo restante estimado ("Siguiente Punto En") calculado dinámicamente usando los minutos residuales de la sesión actual del jugador.
 

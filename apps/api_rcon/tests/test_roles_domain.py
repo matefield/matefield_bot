@@ -1,12 +1,10 @@
+
 import pytest
 import pytest_asyncio
-from sqlmodel import SQLModel, select
-from sqlmodel.ext.asyncio.session import AsyncSession
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.pool import StaticPool
-import sys
-import os
-
+from sqlmodel import SQLModel, select
+from sqlmodel.ext.asyncio.session import AsyncSession
 from src.connections.databases.db import Role, RoleType
 
 sqlite_url = "sqlite+aiosqlite:///test_domain.db"

@@ -5,18 +5,17 @@ Revises: 2281fd6205e6
 Create Date: 2026-10-06 00:19:57.759312
 
 """
-from typing import Sequence, Union
+from collections.abc import Sequence
 
-from alembic import op
 import sqlalchemy as sa
 import sqlmodel
-
+from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = '8f56df8b4ac3'
-down_revision: Union[str, Sequence[str], None] = '2281fd6205e6'
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | Sequence[str] | None = '2281fd6205e6'
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
@@ -29,7 +28,7 @@ def upgrade() -> None:
     op.create_foreign_key(None, 'match_player_stats', 'squads', ['squad_id'], ['id'], ondelete='SET NULL')
     op.alter_column('membership_types', 'price_usd',
                existing_type=sa.INTEGER(),
-               nullable=False,
+               nullable=True,
                existing_server_default=sa.text('0'))
     op.drop_constraint(op.f('membership_types_role_id_fkey'), 'membership_types', type_='foreignkey')
     op.create_foreign_key(None, 'membership_types', 'roles', ['role_id'], ['id'])
@@ -60,21 +59,15 @@ def downgrade() -> None:
     # WARNING: constraint name is None; this directive will fail as
     # rendered.  Add a name, or use a naming convention; see
     # https://alembic.sqlalchemy.org/en/latest/naming.html
-    op.drop_constraint(None, 'reward_claims', type_='foreignkey')
-    # WARNING: constraint name is None; this directive will fail as
-    # rendered.  Add a name, or use a naming convention; see
-    # https://alembic.sqlalchemy.org/en/latest/naming.html
-    op.drop_constraint(None, 'reward_claims', type_='foreignkey')
+    op.drop_constraint('reward_claims_reward_id_fkey', 'reward_claims', type_='foreignkey')
+    op.drop_constraint('reward_claims_steam_id_fkey', 'reward_claims', type_='foreignkey')
     op.create_foreign_key(op.f('reward_claims_reward_id_fkey'), 'reward_claims', 'reward_items', ['reward_id'], ['id'], ondelete='CASCADE')
     op.create_foreign_key(op.f('reward_claims_steam_id_fkey'), 'reward_claims', 'players', ['steam_id'], ['steam_id'], ondelete='CASCADE')
     op.alter_column('player_roles', 'role_id',
                existing_type=sa.Integer(),
                type_=sa.BIGINT(),
                existing_nullable=False)
-    # WARNING: constraint name is None; this directive will fail as
-    # rendered.  Add a name, or use a naming convention; see
-    # https://alembic.sqlalchemy.org/en/latest/naming.html
-    op.drop_constraint(None, 'memberships', type_='foreignkey')
+    op.drop_constraint('memberships_special_role_id_fkey', 'memberships', type_='foreignkey')
     op.create_foreign_key(op.f('memberships_special_role_id_fkey'), 'memberships', 'roles', ['special_role_id'], ['id'], ondelete='SET NULL')
     op.alter_column('memberships', 'special_role_id',
                existing_type=sa.Integer(),
@@ -84,19 +77,13 @@ def downgrade() -> None:
                existing_type=sa.Integer(),
                type_=sa.BIGINT(),
                existing_nullable=True)
-    # WARNING: constraint name is None; this directive will fail as
-    # rendered.  Add a name, or use a naming convention; see
-    # https://alembic.sqlalchemy.org/en/latest/naming.html
-    op.drop_constraint(None, 'membership_types', type_='foreignkey')
+    op.drop_constraint('membership_types_role_id_fkey', 'membership_types', type_='foreignkey')
     op.create_foreign_key(op.f('membership_types_role_id_fkey'), 'membership_types', 'roles', ['role_id'], ['id'], ondelete='SET NULL')
     op.alter_column('membership_types', 'price_usd',
                existing_type=sa.INTEGER(),
                nullable=True,
                existing_server_default=sa.text('0'))
-    # WARNING: constraint name is None; this directive will fail as
-    # rendered.  Add a name, or use a naming convention; see
-    # https://alembic.sqlalchemy.org/en/latest/naming.html
-    op.drop_constraint(None, 'match_player_stats', type_='foreignkey')
+    op.drop_constraint('match_player_stats_squad_id_fkey', 'match_player_stats', type_='foreignkey')
     op.drop_column('match_player_stats', 'squad_id')
     op.alter_column('bot_config', 'config_value',
                existing_type=sa.TEXT(),

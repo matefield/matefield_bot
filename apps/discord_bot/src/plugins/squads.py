@@ -1,17 +1,19 @@
 import logging
+
 import crescent
 import hikari
 
+from src.groups import squad_admin_group, squad_group
 from src.model import Model
-from src.groups import squad_group, squad_admin_group
 
 logger = logging.getLogger(__name__)
 
 plugin = crescent.Plugin[hikari.GatewayBot, Model]()
 
+from wardogs_schemas.v1 import SquadData
+
 from src.ui_utils import UIColors, format_api_error
 
-from wardogs_schemas.v1 import SquadData, SquadMemberData
 
 def get_medal(index: int) -> str:
     medals = {0: "🥇", 1: "🥈", 2: "🥉"}
@@ -276,7 +278,7 @@ class SquadInviteMember:
                     dm = await plugin.app.rest.create_dm_channel(self.usuario.id)
                 await dm.send(embed=embed, components=components)
                 await ctx.respond(f"✅ Invitación enviada a {self.usuario.mention} por MD.")
-            except Exception as dm_e:
+            except Exception:
                 await ctx.respond(f"⚠️ No pude enviarle un MD a {self.usuario.mention}. ¿Tiene los MDs cerrados?")
 
         except Exception as e:
