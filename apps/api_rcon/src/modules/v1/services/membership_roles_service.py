@@ -1,5 +1,6 @@
 """Guild-specific role configuration; Discord permissions remain the bot's concern."""
 from datetime import datetime, timezone
+import logging
 from typing import List, Optional
 
 from fastapi import HTTPException
@@ -8,7 +9,12 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 from src.connections.databases.db import Membership, MembershipType, Role, RoleDiscordBinding
 from wardogs_config import ENVIRONMENT_SETTINGS
-from wardogs_schemas.dtos import ConfigureMembershipRoleRequest, MembershipRoleConfiguration
+from wardogs_schemas.dtos import (
+    ConfigureMembershipRoleRequest, MembershipRoleConfiguration,
+    UnassignMembershipRoleRequest, MembershipRoleUnassignment,
+)
+
+logger = logging.getLogger("wardogs.memberships")
 
 
 class MembershipRolesService:
@@ -23,13 +29,14 @@ class MembershipRolesService:
             raise HTTPException(status_code=403, detail="Este servidor de Discord no está habilitado para gestionar membresías.")
 
     @staticmethod
-    async def _membership_role(membership_type: str, session: AsyncSession, lock: bool = False):
+    async def _membership_role(membership_type: str, session: AsyncSession, lock: bool = False,
+                               require_active: bool = True):
         m_type = (await session.exec(select(MembershipType).where(
             func.upper(MembershipType.code) == membership_type.strip().upper()
         ))).first()
         if not m_type:
             raise HTTPException(status_code=404, detail="Tipo de membresía no encontrado.")
-        if not m_type.is_active:
+        if require_active and not m_type.is_active:
             raise HTTPException(status_code=400, detail="Seleccioná un tipo de membresía activo.")
         role_statement = select(Role).where(Role.id == m_type.role_id)
         if lock:
@@ -87,6 +94,43 @@ class MembershipRolesService:
         await session.commit()
         await session.refresh(binding)
         return MembershipRolesService._response(m_type, binding, changed=True)
+
+    @staticmethod
+    async def unassign(guild_id: str, membership_type: str, req: UnassignMembershipRoleRequest,
+                       session: AsyncSession) -> MembershipRoleUnassignment:
+        """Remove only this guild binding after serializing with configuration and creation."""
+        MembershipRolesService.require_enabled_guild(guild_id)
+        m_type, role = await MembershipRolesService._membership_role(
+            membership_type, session, lock=True, require_active=False,
+        )
+        binding = await MembershipRolesService._binding(guild_id, role.id, session)
+        if binding:
+            if await MembershipRolesService._has_active_memberships(role.id, session):
+                raise HTTPException(status_code=409, detail={"code": "membership_role_in_use"})
+            shared_type = (await session.exec(select(MembershipType.id).where(
+                MembershipType.role_id == role.id, MembershipType.id != m_type.id,
+            ).limit(1))).first()
+            if shared_type is not None:
+                raise HTTPException(status_code=409, detail={"code": "membership_role_shared"})
+
+        response = MembershipRoleUnassignment(
+            guild_id=guild_id, membership_type=m_type.code, membership_type_name=m_type.name,
+            role_id=role.id, discord_role_id=binding.discord_role_id if binding else None,
+            actor_id=req.actor_id, changed=binding is not None,
+        )
+        if binding:
+            await session.delete(binding)
+        await session.commit()
+        logger.info(
+            "membership_role_unassignment actor_id=%s guild_id=%s membership_type=%s "
+            "role_id=%s previous_discord_role_id=%s changed=%s",
+            response.actor_id, response.guild_id, response.membership_type,
+            response.role_id, response.discord_role_id, response.changed,
+            extra={"actor_id": response.actor_id, "guild_id": response.guild_id,
+                   "membership_type": response.membership_type, "role_id": response.role_id,
+                   "previous_discord_role_id": response.discord_role_id, "changed": response.changed},
+        )
+        return response
 
     @staticmethod
     async def _has_active_memberships(role_id: int, session: AsyncSession) -> bool:

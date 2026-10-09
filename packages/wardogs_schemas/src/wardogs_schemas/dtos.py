@@ -102,6 +102,26 @@ class MembershipRoleConfiguration(BaseModel):
     changed: bool = False
 
 
+class UnassignMembershipRoleRequest(BaseModel):
+    actor_id: DiscordSnowflake
+
+
+class MembershipRoleUnassignment(BaseModel):
+    guild_id: DiscordSnowflake
+    membership_type: str
+    membership_type_name: str
+    role_id: DatabaseId
+    discord_role_id: Optional[DiscordSnowflake] = None
+    actor_id: DiscordSnowflake
+    changed: bool
+
+    @model_validator(mode="after")
+    def require_previous_role_when_changed(self):
+        if self.changed != (self.discord_role_id is not None):
+            raise ValueError("Only a changed unassignment must include the previous Discord role ID")
+        return self
+
+
 class MembershipWarconDelivery(BaseModel):
     status: Literal["SUCCESS", "FAILED"]
     server_id: str

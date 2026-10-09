@@ -5,7 +5,10 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from src.connections.databases.db import get_session
 from src.modules.v1.services.membership_roles_service import MembershipRolesService
 from src.security.guard import verify_api_key_guard
-from wardogs_schemas.dtos import DiscordSnowflake, ConfigureMembershipRoleRequest, MembershipRoleConfiguration
+from wardogs_schemas.dtos import (
+    DiscordSnowflake, ConfigureMembershipRoleRequest, MembershipRoleConfiguration,
+    UnassignMembershipRoleRequest, MembershipRoleUnassignment,
+)
 
 router = APIRouter(prefix="/discord/guilds", tags=["Discord Membership Roles"],
                    dependencies=[Depends(verify_api_key_guard)])
@@ -22,3 +25,10 @@ async def configure_membership_role(guild_id: DiscordSnowflake, membership_type:
                                     req: ConfigureMembershipRoleRequest,
                                     session: AsyncSession = Depends(get_session)):
     return await MembershipRolesService.configure(guild_id, membership_type, req, session)
+
+
+@router.delete("/{guild_id}/membership-types/{membership_type}/role", response_model=MembershipRoleUnassignment)
+async def unassign_membership_role(guild_id: DiscordSnowflake, membership_type: str,
+                                   req: UnassignMembershipRoleRequest,
+                                   session: AsyncSession = Depends(get_session)):
+    return await MembershipRolesService.unassign(guild_id, membership_type, req, session)

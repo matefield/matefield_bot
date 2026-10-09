@@ -2,6 +2,7 @@
 from datetime import datetime, timedelta, timezone
 import hashlib
 import json
+import logging
 import socket
 from unittest.mock import AsyncMock
 
@@ -18,7 +19,9 @@ from src.modules.v1.services.membership_roles_service import MembershipRolesServ
 from src.security.guard import verify_api_key_guard
 from wardogs_config import ENVIRONMENT_SETTINGS
 from wardogs_config.security import SecuritySettings
-from wardogs_schemas.dtos import AddMembershipRequest, MembershipWarconDelivery
+from wardogs_schemas.dtos import (
+    AddMembershipRequest, MembershipWarconDelivery, MembershipRoleUnassignment,
+)
 
 GUILD_A = "111111111111111111"
 GUILD_B = "222222222222222222"
@@ -109,11 +112,12 @@ async def test_two_guilds_have_independent_representations(client, session, cata
 
 
 @pytest.mark.asyncio
-async def test_api_key_guard_applies_to_both_operations(client, catalog):
+async def test_api_key_guard_applies_to_all_configuration_operations(client, catalog):
     saved_guard = app.dependency_overrides.pop(verify_api_key_guard)
     try:
         assert (await client.get(url())).status_code == 403
         assert (await client.put(url(), json={"discord_role_id": ROLE_A, "actor_id": ACTOR})).status_code == 403
+        assert (await client.request("DELETE", url(), json={"actor_id": ACTOR})).status_code == 403
     finally:
         app.dependency_overrides[verify_api_key_guard] = saved_guard
 
@@ -131,6 +135,7 @@ async def test_allowlist_fails_closed_and_explicit_list_takes_precedence(client,
 async def test_unknown_guild_cannot_read_or_write(client, catalog):
     assert (await client.get(url("888888888888888888"))).status_code == 403
     assert (await client.put(url("888888888888888888"), json={"discord_role_id": ROLE_A, "actor_id": ACTOR})).status_code == 403
+    assert (await client.request("DELETE", url("888888888888888888"), json={"actor_id": ACTOR})).status_code == 403
 
 
 @pytest.mark.asyncio
@@ -354,3 +359,181 @@ async def test_list_pagination_is_stable_for_identical_membership_dates(client, 
         listing = (await client.get(f"/api/v1/db/memberships?guild_id={GUILD_A}&page={page}&limit=1")).json()
         ids.append(listing["memberships"][0]["id"])
     assert ids == sorted((row.id for row in rows), reverse=True)
+
+
+@pytest.mark.asyncio
+async def test_unassignment_is_guild_scoped_idempotent_and_audited(client, session, catalog, caplog, game_delivery):
+    role, m_type, _ = catalog
+    await client.put(url(), json={"discord_role_id": ROLE_A, "actor_id": ACTOR})
+    await client.put(url(GUILD_B), json={"discord_role_id": ROLE_B, "actor_id": ACTOR})
+    ended = Membership(steam_id=STEAM, membership_type="regular", is_active=False,
+                       role_granted_id=role.id)
+    player_role = PlayerRole(steam_id=STEAM, role_id=role.id)
+    session.add_all([ended, player_role])
+    await session.commit()
+
+    with caplog.at_level(logging.INFO, logger="wardogs.memberships"):
+        removed = await client.request("DELETE", url(code="%20rEgUlAr%20"), json={"actor_id": ACTOR})
+        repeated = await client.request("DELETE", url(), json={"actor_id": ACTOR})
+
+    expected = {"guild_id": GUILD_A, "membership_type": "regular", "membership_type_name": "VIP Normal",
+                "role_id": role.id, "discord_role_id": ROLE_A, "actor_id": ACTOR, "changed": True}
+    assert removed.status_code == repeated.status_code == 200
+    assert removed.json() == expected
+    assert repeated.json() == {**expected, "discord_role_id": None, "changed": False}
+    assert (await client.get(url())).status_code == 404
+    other = (await session.exec(select(RoleDiscordBinding))).one()
+    assert (other.guild_id, other.discord_role_id) == (GUILD_B, ROLE_B)
+    await session.refresh(role)
+    await session.refresh(m_type)
+    assert role.discord_role_id == "999999999999999999"
+    assert m_type.role_id == role.id
+    assert (await session.exec(select(Membership))).one().id == ended.id
+    assert (await session.exec(select(PlayerRole))).one() == player_role
+    audits = [record for record in caplog.records if record.getMessage().startswith("membership_role_unassignment ")]
+    assert [(record.actor_id, record.guild_id, record.membership_type, record.role_id,
+             record.previous_discord_role_id, record.changed) for record in audits] == [
+        (ACTOR, GUILD_A, "regular", role.id, ROLE_A, True),
+        (ACTOR, GUILD_A, "regular", role.id, None, False),
+    ]
+    assert f"actor_id={ACTOR}" in audits[0].getMessage()
+    assert f"guild_id={GUILD_A}" in audits[0].getMessage()
+    assert f"role_id={role.id}" in audits[0].getMessage()
+    assert f"previous_discord_role_id={ROLE_A}" in audits[0].getMessage()
+    assert "changed=True" in audits[0].getMessage()
+    assert "previous_discord_role_id=None changed=False" in audits[1].getMessage()
+    game_delivery.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_absent_binding_is_unchanged_even_when_role_is_shared_and_in_use(client, session, catalog):
+    role = catalog[0]
+    session.add_all([
+        MembershipType(code="express", name="VIP Express", role_id=role.id, is_active=False),
+        Membership(steam_id=STEAM, membership_type="regular", role_granted_id=role.id),
+        RoleDiscordBinding(role_id=role.id, guild_id=GUILD_B, discord_role_id=ROLE_B, configured_by=ACTOR),
+    ])
+    await session.commit()
+    response = await client.request("DELETE", url(), json={"actor_id": ACTOR})
+    assert response.status_code == 200
+    assert response.json()["changed"] is False
+    assert response.json()["discord_role_id"] is None
+    assert (await session.exec(select(RoleDiscordBinding))).one().guild_id == GUILD_B
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("role_field", ["role_granted_id", "special_role_id", "legacy_type"])
+@pytest.mark.parametrize("permanent", [False, True])
+async def test_unassignment_rejects_every_active_role_source(client, session, catalog, role_field, permanent):
+    await client.put(url(), json={"discord_role_id": ROLE_A, "actor_id": ACTOR})
+    membership = Membership(steam_id=STEAM, membership_type="REGULAR",
+                            end_time=None if permanent else datetime.now(timezone.utc) + timedelta(days=3))
+    if role_field != "legacy_type":
+        setattr(membership, role_field, catalog[0].id)
+    session.add(membership)
+    await session.commit()
+    response = await client.request("DELETE", url(), json={"actor_id": ACTOR})
+    assert response.status_code == 409
+    assert response.json() == {"detail": {"code": "membership_role_in_use"}}
+    assert (await session.exec(select(RoleDiscordBinding))).one().discord_role_id == ROLE_A
+    await session.refresh(membership)
+    assert membership.is_active is True
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("state", ["inactive", "expired", "future"])
+async def test_unassignment_ignores_memberships_without_current_entitlement(client, session, catalog, state):
+    await client.put(url(), json={"discord_role_id": ROLE_A, "actor_id": ACTOR})
+    now = datetime.now(timezone.utc)
+    membership = Membership(steam_id=STEAM, membership_type="regular", role_granted_id=catalog[0].id,
+                            is_active=state != "inactive", start_time=now + timedelta(days=1) if state == "future" else now,
+                            end_time=now - timedelta(days=1) if state == "expired" else None)
+    session.add(membership)
+    await session.commit()
+    original = membership.model_dump()
+    response = await client.request("DELETE", url(), json={"actor_id": ACTOR})
+    assert response.status_code == 200 and response.json()["changed"] is True
+    assert (await session.exec(select(RoleDiscordBinding))).all() == []
+    assert membership.model_dump() == original
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("shared_active", [False, True])
+async def test_unassignment_rejects_other_membership_types_sharing_logical_role(client, session, catalog, shared_active):
+    await client.put(url(), json={"discord_role_id": ROLE_A, "actor_id": ACTOR})
+    await client.put(url(GUILD_B), json={"discord_role_id": ROLE_B, "actor_id": ACTOR})
+    session.add(MembershipType(code="express", name="VIP Express", role_id=catalog[0].id, is_active=shared_active))
+    await session.commit()
+    response = await client.request("DELETE", url(), json={"actor_id": ACTOR})
+    assert response.status_code == 409
+    assert response.json() == {"detail": {"code": "membership_role_shared"}}
+    assert {(binding.guild_id, binding.discord_role_id) for binding in (await session.exec(select(RoleDiscordBinding))).all()} == {
+        (GUILD_A, ROLE_A), (GUILD_B, ROLE_B),
+    }
+
+
+@pytest.mark.asyncio
+async def test_inactive_type_can_remove_configuration_without_changing_get_or_put(client, session, catalog):
+    await client.put(url(), json={"discord_role_id": ROLE_A, "actor_id": ACTOR})
+    m_type = catalog[1]
+    m_type.is_active = False
+    session.add(m_type)
+    await session.commit()
+    assert (await client.get(url())).status_code == 400
+    assert (await client.put(url(), json={"discord_role_id": ROLE_B, "actor_id": ACTOR})).status_code == 400
+    response = await client.request("DELETE", url(), json={"actor_id": ACTOR})
+    assert response.status_code == 200 and response.json()["changed"] is True
+    assert m_type.is_active is False and m_type.role_id == catalog[0].id
+
+
+@pytest.mark.asyncio
+async def test_removal_stops_guild_resolution_and_creation_before_domain_or_external_effects(client, session, catalog, game_delivery):
+    await client.put(url(), json={"discord_role_id": ROLE_A, "actor_id": ACTOR})
+    assert (await client.request("DELETE", url(), json={"actor_id": ACTOR})).status_code == 200
+    from fastapi import HTTPException
+    with pytest.raises(HTTPException) as error:
+        await MembershipRolesService.resolve_roles(GUILD_A, [catalog[0].id], session)
+    assert error.value.status_code == 409
+    response = await client.post("/api/v1/db/players/membership", json=create_payload())
+    assert response.status_code == 409
+    assert (await session.exec(select(Membership))).all() == []
+    assert (await session.exec(select(PlayerRole))).all() == []
+    game_delivery.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("invalid", ["0", "-1", "001", "abc", "١٢٣", "18446744073709551616", 123, None])
+async def test_unassignment_requires_valid_actor_id(client, session, catalog, invalid):
+    await client.put(url(), json={"discord_role_id": ROLE_A, "actor_id": ACTOR})
+    response = await client.request("DELETE", url(), json={"actor_id": invalid})
+    assert response.status_code == 422
+    assert (await session.exec(select(RoleDiscordBinding))).one().discord_role_id == ROLE_A
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("guild_id", ["0", "-1", "001", "abc", "18446744073709551616"])
+async def test_unassignment_requires_valid_guild_path(client, catalog, guild_id):
+    assert (await client.request("DELETE", url(guild_id), json={"actor_id": ACTOR})).status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_unassignment_requires_actor_body_and_existing_type_with_logical_role(client, session, catalog):
+    assert (await client.request("DELETE", url(), json={})).status_code == 422
+    assert (await client.request("DELETE", url())).status_code == 422
+    assert (await client.request("DELETE", url(code="unknown"), json={"actor_id": ACTOR})).status_code == 404
+    session.add(MembershipType(code="roleless", name="Roleless"))
+    await session.commit()
+    assert (await client.request("DELETE", url(code="roleless"), json={"actor_id": ACTOR})).status_code == 400
+    assert (await session.exec(select(RoleDiscordBinding))).all() == []
+
+
+def test_unassignment_response_requires_previous_role_when_changed():
+    from pydantic import ValidationError
+    response = {"guild_id": GUILD_A, "membership_type": "regular", "membership_type_name": "VIP Normal",
+                "role_id": 1, "actor_id": ACTOR, "changed": True}
+    with pytest.raises(ValidationError):
+        MembershipRoleUnassignment(**response)
+    assert MembershipRoleUnassignment(**response, discord_role_id=ROLE_A).discord_role_id == ROLE_A
+    assert MembershipRoleUnassignment(**{**response, "changed": False}).discord_role_id is None
+    with pytest.raises(ValidationError):
+        MembershipRoleUnassignment(**{**response, "changed": False}, discord_role_id=ROLE_A)

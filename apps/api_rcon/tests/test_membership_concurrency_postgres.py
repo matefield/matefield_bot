@@ -21,7 +21,8 @@ from sqlmodel import SQLModel, func, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from src.connections.apis.warcon import WarconClient
-from src.connections.databases.db import Membership, MembershipType, Player, Role
+from src.connections.databases.db import Membership, MembershipType, Player, PlayerRole, Role, RoleDiscordBinding
+from src.modules.v1.services.membership_roles_service import MembershipRolesService
 from src.modules.v1.services.memberships_service import MembershipsService
 from wardogs_config import ENVIRONMENT_SETTINGS
 from wardogs_schemas.dtos import AddMembershipRequest, MembershipWarconDelivery
@@ -30,6 +31,9 @@ from wardogs_schemas.dtos import AddMembershipRequest, MembershipWarconDelivery
 TEMPORARY_DATABASE = re.compile(r"matefield_membership_regression_[a-z0-9_]{8,48}\Z")
 STEAM_A = "76561198000000011"
 STEAM_B = "76561198000000012"
+GUILD_ID = "444444444444444444"
+ACTOR_ID = "555555555555555555"
+DISCORD_ROLE_ID = "333333333333333333"
 
 
 @pytest_asyncio.fixture
@@ -240,3 +244,233 @@ async def test_warcon_delivery_serializes_before_later_membership(postgres_engin
     assert expiries_applied[1] > expiries_applied[0]
     async with AsyncSession(postgres_engine) as session:
         assert (await session.exec(select(func.count(Membership.id)))).one() == 2
+
+
+@pytest.fixture
+def isolated_guild_settings(monkeypatch):
+    settings = ENVIRONMENT_SETTINGS.SECURITY_SETTINGS
+    monkeypatch.setattr(settings, "DISCORD_GUILD_IDS", GUILD_ID)
+    monkeypatch.setattr(settings, "DISCORD_GUILD_ID", None)
+
+
+@pytest.fixture
+def warcon_deliveries(monkeypatch):
+    deliveries = []
+
+    async def mock_delivery(_client, steam_id, membership_id, membership_type, expiry):
+        deliveries.append(steam_id)
+        return delivered()
+
+    monkeypatch.setattr(WarconClient, "upsert_reserved_slot", mock_delivery)
+    return deliveries
+
+
+async def seed_scoped_catalog(engine):
+    """Keep one type per logical role so shared-role validation cannot mask races."""
+    async with AsyncSession(engine, expire_on_commit=False) as session:
+        role = Role(code="VIP", name="VIP", role_type="VIP", discord_role_id=DISCORD_ROLE_ID)
+        session.add_all([
+            role,
+            Player(steam_id=STEAM_A, discord_id="111111111111111111"),
+            Player(steam_id=STEAM_B, discord_id="222222222222222222"),
+        ])
+        await session.flush()
+        session.add_all([
+            MembershipType(code="regular", name="VIP Normal", default_days=30, role_id=role.id),
+            RoleDiscordBinding(role_id=role.id, guild_id=GUILD_ID,
+                               discord_role_id=DISCORD_ROLE_ID, configured_by=ACTOR_ID),
+        ])
+        await session.commit()
+
+
+def unassign_request():
+    # Opt-in tests remain collectable while the DELETE implementation is developed.
+    from wardogs_schemas.dtos import UnassignMembershipRoleRequest
+    return UnassignMembershipRoleRequest(actor_id=ACTOR_ID)
+
+
+def scoped_request(operation):
+    return request(STEAM_A, "regular", operation).model_copy(update={"guild_id": GUILD_ID})
+
+
+def paused_commit_session(before_commit, release_commit):
+    class PausedCommitSession(AsyncSession):
+        async def commit(self):
+            if not before_commit.is_set():
+                before_commit.set()
+                await release_commit.wait()
+            await super().commit()
+
+    return PausedCommitSession
+
+
+@pytest.mark.asyncio
+async def test_unassign_waits_for_creation_then_preserves_active_binding(
+    postgres_engine, isolated_warcon_settings, isolated_guild_settings, warcon_deliveries,
+):
+    await seed_scoped_catalog(postgres_engine)
+    before_commit, release_commit = asyncio.Event(), asyncio.Event()
+    PausedCommitSession = paused_commit_session(before_commit, release_commit)
+
+    async with PausedCommitSession(postgres_engine, expire_on_commit=False) as creation_session, \
+            AsyncSession(postgres_engine, expire_on_commit=False) as deletion_session:
+        creation_pid = await backend_pid(creation_session)
+        deletion_pid = await backend_pid(deletion_session)
+        creation = asyncio.create_task(MembershipsService.add_membership(
+            scoped_request("creation-before-unassign"), creation_session
+        ))
+        deletion = None
+        try:
+            async with asyncio.timeout(10):
+                await before_commit.wait()
+                deletion = asyncio.create_task(MembershipRolesService.unassign(
+                    GUILD_ID, "regular", unassign_request(), deletion_session
+                ))
+                await assert_database_lock(postgres_engine, deletion_pid, creation_pid)
+                assert not deletion.done()
+                release_commit.set()
+                assert (await creation).ok is True
+                with pytest.raises(HTTPException) as rejected:
+                    await deletion
+                assert rejected.value.status_code == 409
+                assert rejected.value.detail == {"code": "membership_role_in_use"}
+        finally:
+            release_commit.set()
+            await stop_tasks(*[task for task in (creation, deletion) if task is not None])
+
+    async with AsyncSession(postgres_engine) as session:
+        binding = (await session.exec(select(RoleDiscordBinding))).one()
+        assert binding.guild_id == GUILD_ID
+        assert binding.discord_role_id == DISCORD_ROLE_ID
+        assert (await session.exec(select(func.count(Membership.id)))).one() == 1
+    assert warcon_deliveries == [STEAM_A]
+
+
+@pytest.mark.asyncio
+async def test_creation_waits_for_unassign_then_rejects_before_domain_or_warcon_write(
+    postgres_engine, isolated_warcon_settings, isolated_guild_settings, warcon_deliveries,
+):
+    await seed_scoped_catalog(postgres_engine)
+    before_commit, release_commit = asyncio.Event(), asyncio.Event()
+    PausedCommitSession = paused_commit_session(before_commit, release_commit)
+
+    async with PausedCommitSession(postgres_engine, expire_on_commit=False) as deletion_session, \
+            AsyncSession(postgres_engine, expire_on_commit=False) as creation_session:
+        deletion_pid = await backend_pid(deletion_session)
+        creation_pid = await backend_pid(creation_session)
+        deletion = asyncio.create_task(MembershipRolesService.unassign(
+            GUILD_ID, "regular", unassign_request(), deletion_session
+        ))
+        creation = None
+        try:
+            async with asyncio.timeout(10):
+                await before_commit.wait()
+                creation = asyncio.create_task(MembershipsService.add_membership(
+                    scoped_request("unassign-before-creation"), creation_session
+                ))
+                await assert_database_lock(postgres_engine, creation_pid, deletion_pid)
+                assert not creation.done()
+                release_commit.set()
+                removed = await deletion
+                assert removed.changed is True
+                assert removed.discord_role_id == DISCORD_ROLE_ID
+                with pytest.raises(HTTPException) as rejected:
+                    await creation
+                assert rejected.value.status_code == 409
+                assert "Falta configurar" in rejected.value.detail
+        finally:
+            release_commit.set()
+            await stop_tasks(*[task for task in (deletion, creation) if task is not None])
+
+    async with AsyncSession(postgres_engine) as session:
+        assert (await session.exec(select(func.count(RoleDiscordBinding.id)))).one() == 0
+        assert (await session.exec(select(func.count(Membership.id)))).one() == 0
+        assert (await session.exec(select(func.count(PlayerRole.role_id)))).one() == 0
+    assert warcon_deliveries == []
+
+
+@pytest.mark.asyncio
+async def test_repeated_unassign_serializes_to_one_change(
+    postgres_engine, isolated_guild_settings, warcon_deliveries,
+):
+    await seed_scoped_catalog(postgres_engine)
+    before_commit, release_commit = asyncio.Event(), asyncio.Event()
+    PausedCommitSession = paused_commit_session(before_commit, release_commit)
+
+    async with PausedCommitSession(postgres_engine, expire_on_commit=False) as first_session, \
+            AsyncSession(postgres_engine, expire_on_commit=False) as second_session:
+        first_pid = await backend_pid(first_session)
+        second_pid = await backend_pid(second_session)
+        first = asyncio.create_task(MembershipRolesService.unassign(
+            GUILD_ID, "regular", unassign_request(), first_session
+        ))
+        second = None
+        try:
+            async with asyncio.timeout(10):
+                await before_commit.wait()
+                second = asyncio.create_task(MembershipRolesService.unassign(
+                    GUILD_ID, "regular", unassign_request(), second_session
+                ))
+                await assert_database_lock(postgres_engine, second_pid, first_pid)
+                assert not second.done()
+                release_commit.set()
+                removed, repeated = await first, await second
+                assert removed.changed is True
+                assert removed.discord_role_id == DISCORD_ROLE_ID
+                assert repeated.changed is False
+                assert repeated.discord_role_id is None
+                assert removed.actor_id == repeated.actor_id == ACTOR_ID
+        finally:
+            release_commit.set()
+            await stop_tasks(*[task for task in (first, second) if task is not None])
+
+    async with AsyncSession(postgres_engine) as session:
+        assert (await session.exec(select(func.count(RoleDiscordBinding.id)))).one() == 0
+        assert (await session.exec(select(func.count(Membership.id)))).one() == 0
+    assert warcon_deliveries == []
+
+
+@pytest.mark.asyncio
+async def test_configure_waits_for_unassign_and_preserves_the_new_binding(
+    postgres_engine, isolated_guild_settings, warcon_deliveries,
+):
+    from wardogs_schemas.dtos import ConfigureMembershipRoleRequest
+
+    await seed_scoped_catalog(postgres_engine)
+    before_commit, release_commit = asyncio.Event(), asyncio.Event()
+    PausedCommitSession = paused_commit_session(before_commit, release_commit)
+    replacement_role = "666666666666666666"
+
+    async with PausedCommitSession(postgres_engine, expire_on_commit=False) as deletion_session, \
+            AsyncSession(postgres_engine, expire_on_commit=False) as configuration_session:
+        deletion_pid = await backend_pid(deletion_session)
+        configuration_pid = await backend_pid(configuration_session)
+        deletion = asyncio.create_task(MembershipRolesService.unassign(
+            GUILD_ID, "regular", unassign_request(), deletion_session
+        ))
+        configuration = None
+        try:
+            async with asyncio.timeout(10):
+                await before_commit.wait()
+                configuration = asyncio.create_task(MembershipRolesService.configure(
+                    GUILD_ID, "regular", ConfigureMembershipRoleRequest(
+                        discord_role_id=replacement_role, actor_id=ACTOR_ID,
+                    ), configuration_session,
+                ))
+                await assert_database_lock(postgres_engine, configuration_pid, deletion_pid)
+                assert not configuration.done()
+                release_commit.set()
+                assert (await deletion).changed is True
+                configured = await configuration
+                assert configured.changed is True
+                assert configured.discord_role_id == replacement_role
+        finally:
+            release_commit.set()
+            await stop_tasks(*[task for task in (deletion, configuration) if task is not None])
+
+    async with AsyncSession(postgres_engine) as session:
+        binding = (await session.exec(select(RoleDiscordBinding))).one()
+        assert binding.guild_id == GUILD_ID
+        assert binding.discord_role_id == replacement_role
+        assert (await session.exec(select(func.count(Membership.id)))).one() == 0
+    assert warcon_deliveries == []
