@@ -22,6 +22,7 @@ y este proyecto se adhiere a [Semantic Versioning (SemVer 2.0.0)](https://semver
 - **Corrupción Aritmética de Puntos**: Se corrigió un error grave en `RewardsService` donde los puntos y logs insertaban literales de expresiones binarias (`BinaryExpression`) en vez de sus valores atómicos calculados, lo que envenenaba la base de datos de PostgreSQL.
 - **Gracia de Desconexiones (Seeding Grace Period)**: Se refinó y documentó la constante `SEEDING_FAILURE_GRACE_PERIOD_SECONDS` (90 segundos), consolidando los tiempos de gracia de desconexión sin castigos y limpiando números mágicos hardcodeados.
 - **Limpieza de Linting Crítico**: Se solucionaron múltiples excepciones "ciegas" (blind exceptions `try-except-pass`) y problemas en el uso de SQLAlchemy en todo el proyecto.
+- **Regresión en Cliente API del Bot**: Se resolvieron incompatibilidades de importación (`wardogs_schemas.v1` vs `dtos`) tras la refactorización del core, asegurando que todos los tests locales pasen al 100%.
 
 ---
 
