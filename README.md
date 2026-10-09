@@ -102,7 +102,19 @@ Todas las suites de tests de la API y del bot de Discord se ejecutan en conjunto
 uv run pytest
 ```
 
-Esto ejecuta las 54 pruebas unitarias e integrales (CRUD, roles de dominio DDD, RCON INI, Tebex Webhooks, comandos de Discord y clientes HTTP).
+Las suites cubren CRUD, roles, RCON, webhooks, comandos de Discord y clientes HTTP.
+
+Las regresiones de concurrencia de membresías se omiten por defecto porque
+necesitan PostgreSQL real. Para ejecutarlas, creá una base temporal vacía llamada
+`matefield_membership_regression_<sufijo>` y configurá su URL `postgresql+asyncpg`
+en `MEMBERSHIP_POSTGRES_TEST_URL`. Luego ejecutá:
+
+```bash
+uv run pytest apps/api_rcon/tests/test_membership_concurrency_postgres.py
+```
+
+Estas pruebas comprueban los bloqueos del último cupo y el orden de las entregas;
+usan Warcon simulado y crean y eliminan tablas solamente en esa base temporal.
 
 ## Motor de Sincronización Automática (Multi-Server Polling)
 La aplicación incluye un motor en segundo plano (`sync_engine.py`) embebido en FastAPI diseñado para entornos multi-servidor:
@@ -110,3 +122,29 @@ La aplicación incluye un motor en segundo plano (`sync_engine.py`) embebido en 
 2. **Ciclo de Partidas:** Compara el estado actual (ej. mapa) con el anterior de manera aislada para cada servidor detectando las transiciones y finales de partidas.
 3. **Session Tracking Global:** Consolida el tiempo de juego de los jugadores sin importar a qué servidor del clúster estén conectados. Si un jugador está en el Servidor 1, no se considerará desconectado por el Servidor 2, eliminando posibles condiciones de carrera.
 4. **Sincronización en Tiempo Real:** Las inyecciones de slots reservados RCON y las asignaciones de roles VIP en Discord ocurren **en tiempo real** al utilizar los comandos del bot (`/membership add`, `/roles give`, `/membership remove`, etc), usando el loop del engine en segundo plano solo para mantenimiento y caducidad de membresías (cada 5 minutos).
+
+### Roles de membresía por servidor de Discord
+
+La API almacena `role_discord_bindings`: un vínculo entre el rol lógico de cada
+membresía y su rol concreto en un servidor de Discord. Configurá en el entorno de
+la API `DISCORD_GUILD_IDS` con los IDs habilitados separados por coma. Si está
+vacío se utiliza `DISCORD_GUILD_ID`; sin configuración el acceso se rechaza.
+Esta lista corresponde a servidores de una misma comunidad: las membresías
+continúan siendo globales y no se comparte automáticamente con otros servidores.
+
+Laracord valida los permisos del administrador y que pueda administrar el rol.
+Luego guarda mediante `PUT /api/v1/discord/guilds/{guild_id}/membership-types/{code}/role`
+con `{ "discord_role_id": "...", "actor_id": "..." }`, autenticado por `X-API-Key`.
+`GET` en esa misma ruta permite consultar la configuración. No se modifica la
+membresía, no se asignan roles existentes y no se llama a Warcon al configurar.
+Cambiar a otro rol se rechaza mientras haya membresías vigentes que lo otorgan;
+una migración de usuarios requiere una operación explícita.
+
+Las altas y los listados de Laracord envían `guild_id`. El listado valida que el
+servidor esté habilitado y muestra los roles vinculados a ese servidor. La API
+resuelve los roles VIP y especiales exclusivamente con los vínculos de ese
+servidor, y rechaza faltantes
+antes de guardar la membresía o llamar a Warcon. Las solicitudes antiguas sin
+`guild_id` conservan el comportamiento anterior. No se migran IDs globales ni se
+crean vínculos automáticamente. La caducidad y aplicación a usuarios existentes
+no forman parte del comando de configuración.
