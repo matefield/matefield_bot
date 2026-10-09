@@ -1,9 +1,14 @@
 from fastapi import FastAPI, Depends, Header, HTTPException, Request
 from typing import Optional, List
 import datetime
+import hashlib
+import time
 from wardogs_schemas import v1 as schemas
 
 app = FastAPI(title="Wardogs RCON Mock")
+started_at = time.monotonic()
+mock_experiences = ["Rush", "Conquest"]
+mock_lighting = "Day"
 
 audit_logs = []
 
@@ -55,8 +60,8 @@ async def get_status(auth: str = Depends(verify_auth)):
     return {
         "serverName": "Wardogs Mock Server",
         "map": current_map,
-        "experiences": ["Rush", "Conquest"],
-        "lighting": "Day",
+        "experiences": mock_experiences,
+        "lighting": mock_lighting,
         "alternator": "Random",
         "scoreTick": {"current": mock_state["score"], "min": 0, "max": 100},
         "scoreCap": 100,
@@ -69,6 +74,79 @@ async def get_status(auth: str = Depends(verify_auth)):
         ],
         "rotation": {"nowIndex": mock_state["rotation"], "nextIndex": (mock_state["rotation"] + 1) % len(mock_state["maps"])}
     }
+
+
+@app.get("/v1/catalog/maps")
+async def get_maps(auth: str = Depends(verify_auth)):
+    return {"maps": [{"id": name, "displayName": name} for name in mock_state["maps"]]}
+
+
+@app.get("/v1/catalog/lightings")
+async def get_lightings(auth: str = Depends(verify_auth)):
+    return {"lightings": [{"id": mock_lighting, "displayName": mock_lighting}]}
+
+
+@app.get("/v1/catalog/experiences")
+async def get_experiences(auth: str = Depends(verify_auth)):
+    return {
+        "experiences": [{"id": name, "displayName": name} for name in mock_experiences]
+    }
+
+
+@app.get("/v1/capabilities")
+async def get_capabilities(auth: str = Depends(verify_auth)):
+    # Report only implemented game routes; debug helpers are not game capabilities.
+    routes = sorted(
+        f"{method} {route.path}"
+        for route in app.routes
+        if route.path.startswith("/v1/") and not route.path.startswith("/v1/mock/")
+        for method in route.methods
+        if method not in {"HEAD", "OPTIONS"}
+    )
+    return {
+        "apiVersion": 1,
+        "build": "matefield-python-mock",
+        "auth": {"scheme": "bearer", "header": "Authorization"},
+        # The legacy JSON config endpoint does not implement Warcon's INI editor.
+        "config": {"writable": False, "document": "/v1/config"},
+        "routes": routes,
+    }
+
+
+@app.get("/v1/health")
+async def get_health(auth: str = Depends(verify_auth)):
+    return {
+        "status": "ok",
+        "uptimeSeconds": int(time.monotonic() - started_at),
+        "connections": {"active": 0},
+        "gameThreadQueue": {"inFlight": 0, "depth": 0, "rejectedTotal": 0},
+    }
+
+
+@app.get("/v1/rotation")
+async def get_rotation(auth: str = Depends(verify_auth)):
+    current = mock_state["rotation"]
+    next_index = (current + 1) % len(mock_state["maps"])
+    return {
+        "enabled": True,
+        "mode": "ordered",
+        "entries": [
+            {
+                "index": index,
+                "map": name,
+                "experiences": mock_experiences,
+                "lighting": mock_lighting,
+                "status": "now" if index == current else "next" if index == next_index else None,
+                "denied": False,
+            }
+            for index, name in enumerate(mock_state["maps"])
+        ],
+    }
+
+
+@app.get("/v1/sponsor")
+async def get_sponsor(auth: str = Depends(verify_auth)):
+    return {"imageUrl": ""}
 
 from typing import Any, Dict, List
 
@@ -186,11 +264,17 @@ async def switch_faction(steam_id: str, req: schemas.FactionRequest, auth: str =
             p["faction"] = req.faction
     return {"ok": True}
 
-@app.get("/v1/config", response_model=schemas.Config1)
+@app.get("/v1/config")
 async def get_config(auth: str = Depends(verify_auth)):
+    """Expose the live slots as the read-only INI document Warcon also inspects."""
+    text = "[/Script/WDGame.WDGameSession]\n!DefaultReservedPlayerIds=ClearArray\n"
+    text += "".join(f".DefaultReservedPlayerIds={steam_id}\n" for steam_id in reserved_slots_state)
     return {
-        "text": "Server config text",
-        "revision": "rev123"
+        "text": text,
+        "revision": hashlib.sha256(text.encode()).hexdigest(),
+        "writable": False,
+        "sections": [],
+        "warnings": [],
     }
 
 @app.put("/v1/config", response_model=schemas.ConfigResult)
