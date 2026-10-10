@@ -236,7 +236,7 @@ async def test_warcon_delivery_serializes_before_later_membership(postgres_engin
                 with pytest.raises(HTTPException) as rejected:
                     await second
                 assert rejected.value.status_code == 409
-                assert rejected.value.detail == {"code": "membership_already_active"}
+                assert rejected.value.detail["code"] == "membership_already_active"
         finally:
             release_delivery.set()
             await stop_tasks(*[task for task in (first, second) if task is not None])

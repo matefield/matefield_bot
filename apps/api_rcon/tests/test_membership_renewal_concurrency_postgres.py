@@ -77,7 +77,7 @@ async def test_concurrent_renewals_serialize_and_only_one_future_period_is_saved
                 assert (await first).ok is True
                 with pytest.raises(HTTPException) as rejected:
                     await second
-                assert rejected.value.detail == {"code": "membership_renewal_already_scheduled"}
+                assert rejected.value.detail["code"] == "membership_renewal_already_scheduled"
         finally:
             release.set()
             await stop_tasks(*[task for task in (first, second) if task is not None])

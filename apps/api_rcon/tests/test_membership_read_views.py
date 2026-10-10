@@ -1,5 +1,5 @@
 """Membership reads enrich identities in batches without delivering any benefits."""
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock
 
 import pytest
@@ -84,7 +84,8 @@ async def test_historical_type_without_catalog_and_unlinked_player_remain_readab
     assert response.status_code == 200
     row = response.json()["memberships"][0]
     assert row["discord_id"] is None
-    assert row["type_name"] == "LEGACY"
+    assert row["type"] == "LEGACY"
+    assert row["type_name"] is None
     assert row["role_granted_id"] is None
     assert row["role_granted_discord_id"] is None
     assert row["end_date"] is None
@@ -141,12 +142,12 @@ async def test_enrichment_uses_constant_number_of_reads_per_page(client, session
     assert response.status_code == 200
     assert response.json()["total"] == count
     assert [row["id"] for row in response.json()["memberships"]] == sorted((row.id for row in memberships), reverse=True)
-    assert len(statements) == 6  # Page, total, players, type catalog, roles, guild bindings.
+    assert len(statements) == 7  # Page, total, players, types, removal receipts, roles, guild bindings.
     assert all(statement.lstrip().upper().startswith("SELECT") for statement in statements)
 
 
 @pytest.mark.asyncio
-async def test_user_view_prioritizes_old_active_memberships_over_recent_history(client, session):
+async def test_user_view_prioritizes_current_memberships_over_expired_flags_and_history(client, session):
     session.add(Player(steam_id=STEAM, discord_id=USER))
     permanent = Membership(steam_id=STEAM, membership_type="PERMANENT", start_time=START,
                            end_time=None, is_active=True)
@@ -160,10 +161,96 @@ async def test_user_view_prioritizes_old_active_memberships_over_recent_history(
     assert filtered.status_code == 200
     rows = filtered.json()["memberships"]
     assert filtered.json()["total"] == 14
-    assert [row["id"] for row in rows[:2]] == [expired_but_flagged_active.id, permanent.id]
-    assert all(row["is_active"] for row in rows[:2])
-    assert all(not row["is_active"] for row in rows[2:])
-    assert [row["id"] for row in rows[2:]] == sorted((row.id for row in history), reverse=True)[:8]
-    # A general list keeps its existing chronology; no active-first global sort.
+    assert rows[0]["id"] == permanent.id and rows[0]["status"] == "ACTIVE"
+    assert all(not row["is_active"] and row["status"] == "INACTIVE" for row in rows[1:])
+    assert [row["id"] for row in rows[1:]] == sorted((row.id for row in history), reverse=True)[:9]
+    last_page = await client.get(f"/api/v1/db/memberships?discord_id={USER}&guild_id={GUILD}&limit=10&page=2")
+    expired = last_page.json()["memberships"][-1]
+    assert expired["id"] == expired_but_flagged_active.id and expired["status"] == "EXPIRED"
+    assert expired["is_active"] is True  # A read must not expire the persisted row.
+    # The general list uses the same active-first order before pagination.
     general = await client.get(f"/api/v1/db/memberships?guild_id={GUILD}&limit=10")
-    assert [row["id"] for row in general.json()["memberships"]] == sorted((row.id for row in history), reverse=True)[:10]
+    assert [row["id"] for row in general.json()["memberships"]] == [permanent.id, *sorted((row.id for row in history), reverse=True)[:9]]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("name", ["express", "ExPrEsS"])
+async def test_catalog_name_equal_to_code_is_still_a_human_name(client, session, name):
+    await seed(session)
+    membership_type = (await session.exec(select(MembershipType).where(MembershipType.code == "express"))).one()
+    membership_type.name = name
+    session.add(membership_type)
+    await session.commit()
+    response = await client.get(f"/api/v1/db/memberships?guild_id={GUILD}")
+    assert response.status_code == 200
+    row = response.json()["memberships"][0]
+    assert row["type"] == "ExPrEsS"
+    assert row["type_name"] == name
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("personal", [False, True])
+async def test_status_groups_are_ordered_before_pagination_without_writes_or_lost_periods(
+    client, session, test_engine, monkeypatch, personal,
+):
+    from src.modules.v1.services import membership_state_service, memberships_service
+
+    now = datetime(2026, 10, 10, 12, tzinfo=timezone.utc)
+
+    class FrozenDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return now if tz is None else now.astimezone(tz)
+
+    monkeypatch.setattr(memberships_service, "datetime", FrozenDateTime)
+    monkeypatch.setattr(membership_state_service, "datetime", FrozenDateTime)
+    session.add(Player(steam_id=STEAM, discord_id=USER))
+    active_old = Membership(steam_id=STEAM, membership_type="regular", is_active=True,
+                            start_time=now - timedelta(days=300), end_time=now + timedelta(days=2))
+    active_new = Membership(steam_id=STEAM, membership_type="regular", is_active=True,
+                            start_time=now - timedelta(days=100), end_time=None)
+    scheduled = Membership(steam_id=STEAM, membership_type="express", is_active=False, is_scheduled=True,
+                           start_time=now + timedelta(days=100), end_time=now + timedelta(days=114))
+    future = Membership(steam_id=STEAM, membership_type="express", is_active=True,
+                        start_time=now + timedelta(days=10), end_time=now + timedelta(days=24))
+    expired = Membership(steam_id=STEAM, membership_type="express", is_active=True,
+                         start_time=now - timedelta(days=1), end_time=now - timedelta(hours=1))
+    inactive = Membership(steam_id=STEAM, membership_type="express", is_active=False,
+                          start_time=now - timedelta(hours=2), end_time=None)
+    periods = [active_old, expired, scheduled, inactive, future, active_new]
+    session.add_all(periods)
+    await session.commit()
+    expected = [active_new, active_old, scheduled, future, inactive, expired]
+    statements = []
+
+    def record_sql(connection, cursor, statement, parameters, context, executemany):
+        statements.append(statement)
+
+    commit = AsyncMock(wraps=session.commit)
+    monkeypatch.setattr(session, "commit", commit)
+    delivery = AsyncMock(side_effect=AssertionError("A read must not deliver game benefits"))
+    monkeypatch.setattr(WarconClient, "upsert_reserved_slot", delivery)
+    event.listen(test_engine.sync_engine, "before_cursor_execute", record_sql)
+    rows = []
+    try:
+        for page in range(1, 5):
+            params = {"guild_id": GUILD, "limit": 2, "page": page}
+            if personal:
+                params["discord_id"] = USER
+            response = await client.get("/api/v1/db/memberships", params=params)
+            assert response.status_code == 200
+            result = response.json()
+            assert result["total"] == 6 and result["page"] == page and result["limit"] == 2
+            assert [row["id"] for row in result["memberships"]] == [period.id for period in expected[(page - 1) * 2:page * 2]]
+            rows.extend(result["memberships"])
+    finally:
+        event.remove(test_engine.sync_engine, "before_cursor_execute", record_sql)
+    assert [row["status"] for row in rows] == ["ACTIVE", "ACTIVE", "SCHEDULED", "NOT_STARTED", "INACTIVE", "EXPIRED"]
+    assert len({row["id"] for row in rows}) == len(periods)
+    assert {row["id"] for row in rows} == {period.id for period in periods}
+    assert statements and all(statement.lstrip().upper().startswith("SELECT") for statement in statements)
+    commit.assert_not_awaited()
+    delivery.assert_not_awaited()
+    # Persisted flags stay untouched even when their dates describe an expired period.
+    await session.refresh(expired)
+    assert expired.is_active is True and expired.is_scheduled is False

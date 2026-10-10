@@ -87,7 +87,7 @@ async def test_add_rejects_different_existing_active_plan_without_touching_warco
     await session.commit()
     response = await client.post("/api/v1/db/players/membership", json=command_payload())
     assert response.status_code == 409
-    assert response.json()["detail"] == {"code": "membership_already_active"}
+    assert response.json()["detail"]["code"] == "membership_already_active"
     assert (await session.exec(select(Membership))).one().id == other.id
     delivery.assert_not_awaited()
 
@@ -97,7 +97,7 @@ async def test_add_does_not_implicitly_renew_an_active_membership(client, sessio
     first = (await client.post("/api/v1/db/players/membership", json=command_payload())).json()
     second = await client.post("/api/v1/db/players/membership", json=command_payload(operation_id="another-operation"))
     assert second.status_code == 409
-    assert second.json()["detail"] == {"code": "membership_already_active"}
+    assert second.json()["detail"]["code"] == "membership_already_active"
     rows = (await session.exec(select(Membership))).all()
     assert len(rows) == 1 and rows[0].is_active is True
     assert rows[0].end_time.replace(tzinfo=timezone.utc) == datetime.fromisoformat(first["membership"]["end_date"].replace("Z", "+00:00"))
@@ -509,7 +509,7 @@ async def test_add_rejects_active_membership_before_invalid_explicit_special_rol
     response = await client.post("/api/v1/db/players/membership", json=command_payload(
         operation_id="renewal-with-invalid-special", special_role_id=special.id))
     assert response.status_code == 409
-    assert response.json()["detail"] == {"code": "membership_already_active"}
+    assert response.json()["detail"]["code"] == "membership_already_active"
     assert original.is_active is True
     assert len((await session.exec(select(Membership))).all()) == 1
     assert delivery.await_count == 1

@@ -4,8 +4,8 @@ from fastapi.responses import FileResponse
 from sqlmodel.ext.asyncio.session import AsyncSession
 from wardogs_schemas import v1 as schemas
 from wardogs_schemas.dtos import (
-    DiscordSnowflake, RenewMembershipRequest, RenewMembershipResponse,
-    MembershipRenewalDeliveriesResponse, CompleteMembershipRenewalRequest,
+    DiscordSnowflake, RenewMembershipRequest, RenewMembershipResponse, RetryMembershipRequest,
+    MembershipRenewalDeliveriesResponse, MembershipRenewalRoleDelivery, CompleteMembershipRenewalRequest,
     CompleteMembershipRenewalResponse,
 )
 
@@ -20,6 +20,7 @@ from src.modules.v1.schemas.dtos import (
 from src.modules.v1.services.memberships_service import MembershipsService
 from src.modules.v1.services.membership_removals_service import MembershipRemovalsService
 from src.modules.v1.services.membership_renewals_service import MembershipRenewalsService
+from src.modules.v1.services.membership_deliveries_service import MembershipDeliveriesService
 from src.modules.v1.services.export_service import (
     generate_memberships_csv,
     generate_export_download_token,
@@ -42,16 +43,30 @@ async def renew_membership(req: RenewMembershipRequest, session: AsyncSession = 
     return await MembershipRenewalsService.renew(req, session)
 
 
+@router.get("/discord/membership-deliveries", dependencies=[Depends(verify_api_key_guard)], response_model=MembershipRenewalDeliveriesResponse)
 @router.get("/discord/membership-renewals/deliveries", dependencies=[Depends(verify_api_key_guard)], response_model=MembershipRenewalDeliveriesResponse)
 async def membership_renewal_deliveries(guild_id: DiscordSnowflake, session: AsyncSession = Depends(get_session)):
-    return await MembershipRenewalsService.deliveries(guild_id, session)
+    return await MembershipDeliveriesService.deliveries(guild_id, session)
 
 
+@router.get("/discord/membership-deliveries/{delivery_id}", dependencies=[Depends(verify_api_key_guard)], response_model=MembershipRenewalRoleDelivery)
+async def membership_delivery(delivery_id: Annotated[int, Path(ge=1, le=2 ** 31 - 1)],
+                              guild_id: DiscordSnowflake, session: AsyncSession = Depends(get_session)):
+    return await MembershipDeliveriesService.delivery(delivery_id, guild_id, session)
+
+
+@router.post("/discord/membership-deliveries/{delivery_id}/complete", dependencies=[Depends(verify_api_key_guard)], response_model=CompleteMembershipRenewalResponse)
 @router.post("/discord/membership-renewals/deliveries/{delivery_id}/complete", dependencies=[Depends(verify_api_key_guard)], response_model=CompleteMembershipRenewalResponse)
 async def complete_membership_renewal_delivery(delivery_id: Annotated[int, Path(ge=1, le=2 ** 31 - 1)],
                                                req: CompleteMembershipRenewalRequest,
                                                session: AsyncSession = Depends(get_session)):
-    return await MembershipRenewalsService.complete(delivery_id, req, session)
+    return await MembershipDeliveriesService.complete(delivery_id, req, session)
+
+
+@router.post("/db/memberships/{membership_id}/retry", dependencies=[Depends(verify_api_key_guard)], response_model=AddMembershipResponse)
+async def retry_membership(membership_id: Annotated[int, Path(ge=1, le=2 ** 31 - 1)],
+                           req: RetryMembershipRequest, session: AsyncSession = Depends(get_session)):
+    return await MembershipDeliveriesService.retry(membership_id, req, session)
 
 
 @router.post("/db/players/{steam_id}/membership/remove", dependencies=[Depends(verify_api_key_guard)], response_model=RemoveMembershipResponse)

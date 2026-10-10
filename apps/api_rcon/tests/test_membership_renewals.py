@@ -11,7 +11,9 @@ from src.connections.databases.db import (
     Membership, MembershipRenewalDelivery, MembershipType, Player, PlayerRole, Role, RoleDiscordBinding,
 )
 from src.modules.v1.services import membership_renewals_service as renewals_module
+from src.modules.v1.services import membership_deliveries_service as deliveries_module
 from src.modules.v1.services import memberships_service as memberships_module
+from src.modules.v1.services import membership_state_service as states_module
 from src.modules.v1.services.memberships_service import MembershipsService
 from src.modules.v1.services.membership_renewals_service import MembershipRenewalsService
 from wardogs_config import ENVIRONMENT_SETTINGS
@@ -44,7 +46,9 @@ def freeze(monkeypatch, moment):
         def now(cls, tz=None):
             return moment.astimezone(tz) if tz is not None else moment.replace(tzinfo=None)
     monkeypatch.setattr(renewals_module, "datetime", Frozen)
+    monkeypatch.setattr(deliveries_module, "datetime", Frozen)
     monkeypatch.setattr(memberships_module, "datetime", Frozen)
+    monkeypatch.setattr(states_module, "datetime", Frozen)
 
 
 @pytest.fixture
@@ -122,7 +126,9 @@ async def test_add_rejects_any_existing_active_type_with_controlled_code(client,
         "steam_id": STEAM, "membership_type": "regular", "source": "DISCORD", "guild_id": GUILD, "operation_id": "add-new",
     })
     assert response.status_code == 409
-    assert response.json()["detail"] == {"code": "membership_already_active"}
+    assert response.json()["detail"]["code"] == "membership_already_active"
+    assert response.json()["detail"]["membership"]["id"] == current.id
+    assert response.json()["detail"]["membership"]["status"] == "ACTIVE"
     assert len((await session.exec(select(Membership))).all()) == 1
     deliveries_mock[0].assert_not_awaited()
 
