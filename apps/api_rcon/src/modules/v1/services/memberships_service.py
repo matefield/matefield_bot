@@ -7,7 +7,7 @@ from fastapi import HTTPException
 from sqlmodel import col, func, or_, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from src.connections.databases.db import Player, Membership, Role, PlayerRole, BotConfig, MembershipType, RoleDiscordBinding, RconServer, MembershipRemovalOperation
+from src.connections.databases.db import Player, Membership, Role, PlayerRole, BotConfig, MembershipType, RoleDiscordBinding, RconServer, MembershipRemovalOperation, MembershipRenewalDelivery
 from src.modules.v1.services.membership_roles_service import MembershipRolesService
 from src.connections.apis.rcon import RCONManager
 from src.connections.apis.warcon import WarconClient
@@ -26,6 +26,34 @@ class MembershipsService:
         ).limit(1))).first()
         if pending:
             raise HTTPException(status_code=409, detail={"code": "membership_removal_pending"})
+
+    @staticmethod
+    async def _require_no_pending_renewal_delivery(steam_id: str, session: AsyncSession) -> None:
+        pending = (await session.exec(select(MembershipRenewalDelivery.id).join(
+            Membership, MembershipRenewalDelivery.membership_id == Membership.id,
+        ).where(
+            Membership.steam_id == steam_id, MembershipRenewalDelivery.activated == True,
+            MembershipRenewalDelivery.completed == False, MembershipRenewalDelivery.cancelled == False,
+        ).limit(1))).first()
+        if pending:
+            raise HTTPException(status_code=409, detail={"code": "membership_renewal_delivery_pending"})
+
+    @staticmethod
+    async def _require_no_scheduled_renewal(steam_id: str, session: AsyncSession) -> None:
+        """Legacy edits must not move a calendar already owned by a renewal receipt."""
+        now = datetime.now(timezone.utc)
+        pending = (await session.exec(select(Membership.id).outerjoin(
+            MembershipRenewalDelivery, MembershipRenewalDelivery.membership_id == Membership.id,
+        ).where(
+            Membership.steam_id == steam_id,
+            or_(Membership.is_scheduled == True,
+                ((Membership.is_active == True) & or_(Membership.end_time == None, Membership.end_time > now)
+                 & (MembershipRenewalDelivery.cancelled == False)),
+                ((MembershipRenewalDelivery.phase == "END") & (MembershipRenewalDelivery.cancelled == False)
+                 & (MembershipRenewalDelivery.completed == False))),
+        ).limit(1))).first()
+        if pending:
+            raise HTTPException(status_code=409, detail={"code": "membership_renewals_pending"})
 
     @staticmethod
     async def add_membership(req: AddMembershipRequest, session: AsyncSession) -> Dict[str, Any]:
@@ -48,6 +76,24 @@ class MembershipsService:
                     raise HTTPException(status_code=409, detail="Esta operación ya se utilizó con otros datos.")
                 return await MembershipsService._deliver_discord_membership(previous, player, session, replayed=True, guild_id=req.guild_id)
         
+        await MembershipsService._require_no_pending_renewal_delivery(req.steam_id, session)
+        if discord_source:
+            now = datetime.now(timezone.utc)
+            active = (await session.exec(select(Membership.id).where(
+                Membership.steam_id == req.steam_id, Membership.is_active == True,
+                Membership.start_time <= now, or_(Membership.end_time == None, Membership.end_time > now),
+            ).limit(1))).first()
+            if active:
+                raise HTTPException(status_code=409, detail={"code": "membership_already_active"})
+            scheduled = (await session.exec(select(Membership.id).where(
+                Membership.steam_id == req.steam_id, Membership.is_scheduled == True,
+            ).limit(1))).first()
+            if scheduled:
+                raise HTTPException(status_code=409, detail={"code": "membership_renewal_already_scheduled"})
+        else:
+            # Legacy renewals cannot shorten or overlap a period already scheduled.
+            await MembershipsService._require_no_scheduled_renewal(req.steam_id, session)
+
         norm_type = req.membership_type.strip().upper()
         # Different players compete for the same quota. Serialize that count and
         # insertion on the type row, in addition to the per-player renewal lock.
@@ -105,8 +151,9 @@ class MembershipsService:
 
         quota_now = datetime.now(timezone.utc)
         if max_quota is not None:
-            usage_stmt = select(func.count(col(Membership.id))).where(
-                func.upper(Membership.membership_type) == norm_type, Membership.is_active == True,
+            usage_stmt = select(func.count(func.distinct(Membership.steam_id))).where(
+                func.upper(Membership.membership_type) == norm_type,
+                or_(Membership.is_active == True, Membership.is_scheduled == True),
                 or_(Membership.end_time == None, Membership.end_time > quota_now),
             )
             current_usage = (await session.exec(usage_stmt)).one()
@@ -241,6 +288,7 @@ class MembershipsService:
             start_time=start_date,
             end_time=end_date,
             is_active=True,
+            discord_guild_id=req.guild_id if discord_source else None,
             is_booster=req.is_booster or False,
             role_granted_id=vip_role_id,
             special_role_id=attached_special_role_id,
@@ -285,7 +333,7 @@ class MembershipsService:
 
     @staticmethod
     def _valid_discord_id(role_id: Optional[str]) -> bool:
-        return bool(role_id and len(role_id) <= 20 and role_id.isascii() and role_id.isdigit()
+        return bool(isinstance(role_id, str) and role_id and len(role_id) <= 20 and role_id.isascii() and role_id.isdigit()
                     and role_id[0] != "0" and int(role_id) < 2 ** 64)
 
     @staticmethod
@@ -308,6 +356,7 @@ class MembershipsService:
             raise HTTPException(status_code=409, detail="El jugador de esta membresía ya no está registrado.")
         await session.refresh(membership)
         await MembershipsService._require_no_pending_removal(membership.steam_id, session)
+        await MembershipsService._require_no_pending_renewal_delivery(membership.steam_id, session)
         if not MembershipsService._valid_discord_id(player.discord_id):
             raise HTTPException(status_code=409, detail="El jugador ya no tiene una cuenta de Discord válida vinculada.")
         now = datetime.now(timezone.utc)
@@ -341,7 +390,7 @@ class MembershipsService:
         # membership must never replace the expiry of a longer or permanent benefit.
         active_expiries = (await session.exec(select(Membership.end_time).where(
             Membership.steam_id == membership.steam_id,
-            Membership.is_active == True,
+            or_(Membership.is_active == True, Membership.is_scheduled == True),
             Membership.server_id == None,
             or_(Membership.end_time == None, Membership.end_time > now),
         ))).all()
@@ -357,7 +406,7 @@ class MembershipsService:
             ok=True,
             message="Membership already registered" if replayed else "Membership added",
             membership=CreatedMembershipItem(
-                id=membership.id, steam_id=membership.steam_id, type=membership.membership_type,
+                id=membership.id, steam_id=membership.steam_id, type=membership.membership_type, type_name=membership_type.name,
                 start_date=membership.start_time.replace(tzinfo=timezone.utc) if membership.start_time.tzinfo is None else membership.start_time,
                 end_date=end_time, is_booster=membership.is_booster,
                 server_id=membership.server_id,
@@ -441,6 +490,8 @@ class MembershipsService:
         ).with_for_update())
         await session.refresh(membership)
         await MembershipsService._require_no_pending_removal(membership.steam_id, session)
+        await MembershipsService._require_no_pending_renewal_delivery(membership.steam_id, session)
+        await MembershipsService._require_no_scheduled_renewal(membership.steam_id, session)
 
         if req.server_id is not None and await session.get(RconServer, req.server_id) is None:
             raise HTTPException(status_code=404, detail="Servidor RCON no encontrado.")
@@ -524,6 +575,13 @@ class MembershipsService:
         stmt = select(Membership).where(Membership.is_active == True, Membership.end_time != None)
         active_memberships = (await session.exec(stmt)).all()
         
+        # A scheduled period starts at the old expiry; changing only that expiry
+        # would create an overlap or a gap. Reject the batch before any mutation.
+        for steam_id in sorted({m.steam_id for m in active_memberships}):
+            await session.exec(select(Player).where(Player.steam_id == steam_id).with_for_update())
+            await MembershipsService._require_no_pending_renewal_delivery(steam_id, session)
+            await MembershipsService._require_no_scheduled_renewal(steam_id, session)
+
         # Validate the complete batch before changing any member's benefits.
         updates = [(m, MembershipsService._add_days(m.end_time, days))
                    for m in active_memberships if m.end_time is not None]
@@ -546,6 +604,16 @@ class MembershipsService:
         if not membership:
             raise HTTPException(status_code=404, detail="Membership not found")
             
+        await session.exec(select(Player).where(Player.steam_id == membership.steam_id).with_for_update())
+        await session.refresh(membership)
+        await MembershipsService._require_no_pending_renewal_delivery(membership.steam_id, session)
+        await MembershipsService._require_no_scheduled_renewal(membership.steam_id, session)
+        history = (await session.exec(select(MembershipRenewalDelivery.id).where(
+            or_(MembershipRenewalDelivery.membership_id == membership.id,
+                MembershipRenewalDelivery.previous_membership_id == membership.id),
+        ).limit(1))).first()
+        if history:
+            raise HTTPException(status_code=409, detail={"code": "membership_renewal_history_preserved"})
         was_active = membership.is_active
         if was_active:
             await MembershipsService._deactivate_membership(membership, session, revoke_special_role=False)
@@ -581,7 +649,7 @@ class MembershipsService:
         if target_steam_id:
             # Personal views show current benefits before newer history; the
             # persisted flag remains authoritative even before expiry maintenance.
-            statement = statement.order_by(col(Membership.is_active).desc())
+            statement = statement.order_by(col(Membership.is_active).desc(), col(Membership.is_scheduled).desc())
             statement = statement.where(Membership.steam_id == target_steam_id)
             total_statement = total_statement.where(Membership.steam_id == target_steam_id)
 
@@ -645,6 +713,7 @@ class MembershipsService:
                 "type_name": membership_type.name if membership_type else m.membership_type,
                 "discord_id": player.discord_id if player else None,
                 "is_active": m.is_active,
+                "is_scheduled": m.is_scheduled,
                 "is_booster": m.is_booster,
                 "server_id": m.server_id,
                 "start_date": m.start_time.isoformat(),
@@ -667,17 +736,22 @@ class MembershipsService:
 
     @staticmethod
     async def sync_memberships_logic(session: AsyncSession) -> dict[str, Any]:
+        from src.modules.v1.services.membership_renewals_service import MembershipRenewalsService
+        await MembershipRenewalsService.activate_due(session)
         now = datetime.now(UTC)
         
         # 1. Expire old memberships
         expired_stmt = select(Membership).where(
             Membership.is_active == True,
             Membership.end_time != None,
-            col(Membership.end_time) < now
+            col(Membership.end_time) <= now
         ).order_by(col(Membership.id))
         expired = (await session.exec(expired_stmt)).all()
         for m in expired:
-            await MembershipsService._deactivate_membership(m, session)
+            await session.exec(select(Player).where(Player.steam_id == m.steam_id).with_for_update())
+            await session.refresh(m)
+            if m.is_active and m.end_time and (m.end_time.replace(tzinfo=timezone.utc) if m.end_time.tzinfo is None else m.end_time) <= now:
+                await MembershipsService._deactivate_membership(m, session)
                         
         if expired:
             await session.commit()

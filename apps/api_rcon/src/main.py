@@ -34,6 +34,7 @@ from src.modules.v1.routers.discord_steam_link import (
 )
 from src.modules.v1.services.backup_service import create_database_sql_backup
 from src.modules.v1.services.memberships_service import MembershipsService
+from src.modules.v1.services.membership_renewals_service import MembershipRenewalsService
 from src.sync_engine import poll_rcon
 
 # ---------------------------------------------------------------------------
@@ -73,6 +74,7 @@ async def db_maintenance_loop() -> None:
                 )
                 await session.commit()
                 await MembershipsService.sync_memberships_logic(session)
+            await MembershipRenewalsService.retry_pending(engine)
         except asyncio.CancelledError:
             break
         except Exception as exc:

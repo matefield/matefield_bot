@@ -68,6 +68,7 @@ class CreatedMembershipItem(BaseModel):
     id: int
     steam_id: str
     type: str
+    type_name: Optional[str] = None
     start_date: datetime
     end_date: Optional[datetime] = None
     is_booster: bool
@@ -136,6 +137,45 @@ class AddMembershipResponse(BaseModel):
     discord: Optional[MembershipDiscordDelivery] = None
     warcon: Optional[MembershipWarconDelivery] = None
     replayed: bool = False
+
+
+class RenewMembershipRequest(BaseModel):
+    steam_id: str = Field(strict=True, pattern=r"^[0-9]{17}$")
+    membership_type: str = Field(strict=True, min_length=1, max_length=100)
+    days: Optional[int] = Field(default=None, strict=True, ge=0, le=3652)
+    operation_id: str = Field(strict=True, min_length=1, max_length=100, pattern=r"^[A-Za-z0-9._:-]+$")
+    guild_id: DiscordSnowflake
+    actor_id: DiscordSnowflake
+
+
+class RenewMembershipResponse(AddMembershipResponse):
+    status: Literal["SCHEDULED"] = "SCHEDULED"
+    previous_membership_id: DatabaseId
+
+
+class MembershipRenewalRoleDelivery(BaseModel):
+    id: DatabaseId
+    membership_id: DatabaseId
+    previous_membership_id: DatabaseId
+    steam_id: str = Field(strict=True, pattern=r"^[0-9]{17}$")
+    user_id: DiscordSnowflake
+    guild_id: DiscordSnowflake
+    role_ids_to_add: List[DiscordSnowflake]
+    role_ids_to_remove: List[DiscordSnowflake]
+
+
+class MembershipRenewalDeliveriesResponse(BaseModel):
+    deliveries: List[MembershipRenewalRoleDelivery]
+
+
+class CompleteMembershipRenewalRequest(BaseModel):
+    guild_id: DiscordSnowflake
+    user_id: Optional[DiscordSnowflake] = None
+
+
+class CompleteMembershipRenewalResponse(BaseModel):
+    ok: Literal[True] = True
+    id: DatabaseId
 
 
 class RemoveMembershipRequest(BaseModel):

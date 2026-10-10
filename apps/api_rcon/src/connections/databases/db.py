@@ -12,7 +12,7 @@ from datetime import UTC, datetime
 from enum import Enum
 from typing import Optional
 
-from sqlalchemy import CheckConstraint, Column, DateTime, ForeignKey, Text, UniqueConstraint
+from sqlalchemy import CheckConstraint, Column, DateTime, ForeignKey, Text, UniqueConstraint, false
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlmodel import Field, Relationship, SQLModel
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -93,6 +93,8 @@ class Membership(SQLModel, table=True):
     start_time: datetime = Field(default_factory=lambda: datetime.now(UTC), sa_column=Column("start_date", DateTime(timezone=True)))
     end_time: datetime | None = Field(default=None, sa_column=Column("end_date", DateTime(timezone=True))) # Null means permanent
     is_active: bool = Field(default=True)
+    is_scheduled: bool = Field(default=False, sa_column_kwargs={"server_default": false()})
+    discord_guild_id: Optional[str] = Field(default=None, max_length=20)
     is_booster: bool = Field(default=False)
     role_granted_id: int | None = Field(default=None, sa_column=Column("role_granted_id", ForeignKey("roles.id")))
     special_role_id: int | None = Field(default=None, sa_column=Column("special_role_id", ForeignKey("roles.id"), index=True))
@@ -120,6 +122,26 @@ class MembershipRemovalOperation(SQLModel, table=True):
     user_id: str = Field(max_length=20)
     result_json: str = Field(sa_column=Column(Text, nullable=False))
     discord_roles_removed: bool = Field(default=False)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC), sa_column=Column(DateTime(timezone=True), nullable=False))
+
+
+class MembershipRenewalDelivery(SQLModel, table=True):
+    """A scheduled period and its durable, guild-scoped Discord role delivery."""
+    __tablename__ = "membership_renewal_deliveries"
+    id: Optional[int] = Field(default=None, primary_key=True)
+    membership_id: int = Field(foreign_key="memberships.id", index=True)
+    previous_membership_id: int = Field(foreign_key="memberships.id")
+    phase: str = Field(default="START", max_length=5)
+    guild_id: str = Field(max_length=20, index=True)
+    actor_id: str = Field(max_length=20)
+    user_id: str = Field(max_length=20)
+    role_ids_to_add_json: str = Field(sa_column=Column(Text, nullable=False))
+    role_ids_to_remove_json: str = Field(sa_column=Column(Text, nullable=False))
+    __table_args__ = (UniqueConstraint("membership_id", "phase", name="uq_membership_renewal_delivery_phase"),)
+    available_at: datetime = Field(sa_column=Column(DateTime(timezone=True), nullable=False))
+    activated: bool = Field(default=False)
+    completed: bool = Field(default=False)
+    cancelled: bool = Field(default=False)
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC), sa_column=Column(DateTime(timezone=True), nullable=False))
 
 class PlayerSession(SQLModel, table=True):

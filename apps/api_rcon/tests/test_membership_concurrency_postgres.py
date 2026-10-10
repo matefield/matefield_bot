@@ -233,17 +233,18 @@ async def test_warcon_delivery_serializes_before_later_membership(postgres_engin
                 assert expiries_applied == []
                 release_delivery.set()
                 assert (await first).ok is True
-                assert (await second).ok is True
+                with pytest.raises(HTTPException) as rejected:
+                    await second
+                assert rejected.value.status_code == 409
+                assert rejected.value.detail == {"code": "membership_already_active"}
         finally:
             release_delivery.set()
             await stop_tasks(*[task for task in (first, second) if task is not None])
 
-    assert len(expiries_applied) == 2
+    assert len(expiries_applied) == 1
     assert 13.9 < (expiries_applied[0] - before).total_seconds() / 86400 < 14.1
-    assert 29.9 < (expiries_applied[1] - before).total_seconds() / 86400 < 30.1
-    assert expiries_applied[1] > expiries_applied[0]
     async with AsyncSession(postgres_engine) as session:
-        assert (await session.exec(select(func.count(Membership.id)))).one() == 2
+        assert (await session.exec(select(func.count(Membership.id)))).one() == 1
 
 
 @pytest.fixture
@@ -377,7 +378,7 @@ async def test_creation_waits_for_unassign_then_rejects_before_domain_or_warcon_
                 with pytest.raises(HTTPException) as rejected:
                     await creation
                 assert rejected.value.status_code == 409
-                assert "Falta configurar" in rejected.value.detail
+                assert rejected.value.detail == {"code": "membership_role_configuration_missing"}
         finally:
             release_commit.set()
             await stop_tasks(*[task for task in (deletion, creation) if task is not None])

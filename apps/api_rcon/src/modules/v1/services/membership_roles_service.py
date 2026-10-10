@@ -139,7 +139,7 @@ class MembershipRolesService:
             select(Membership.id)
             .outerjoin(MembershipType, func.upper(Membership.membership_type) == func.upper(MembershipType.code))
             .where(
-                Membership.is_active == True, Membership.start_time <= now,
+                or_((Membership.is_active == True) & (Membership.start_time <= now), Membership.is_scheduled == True),
                 or_(Membership.end_time == None, Membership.end_time > now),
                 or_(Membership.role_granted_id == role_id, Membership.special_role_id == role_id,
                     (Membership.role_granted_id == None) & (MembershipType.role_id == role_id)),

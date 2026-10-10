@@ -5,12 +5,12 @@ import logging
 
 from fastapi import HTTPException
 from sqlalchemy.exc import IntegrityError
-from sqlmodel import col, func, select
+from sqlmodel import col, func, or_, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from src.connections.apis.warcon import WarconClient
 from src.connections.databases.db import (
-    Membership, MembershipRemovalOperation, MembershipType, Player, PlayerRole, Role, RoleDiscordBinding,
+    Membership, MembershipRemovalOperation, MembershipRenewalDelivery, MembershipType, Player, PlayerRole, Role, RoleDiscordBinding,
 )
 from src.modules.v1.services.membership_roles_service import MembershipRolesService
 from src.modules.v1.services.memberships_service import MembershipsService
@@ -38,7 +38,8 @@ class MembershipRemovalsService:
             raise HTTPException(status_code=409, detail={"code": "membership_removal_discord_account_missing"})
         # A completed receipt must never revoke a newer membership or rewrite Warcon.
         active = (await session.exec(select(Membership.id).where(
-            Membership.steam_id == operation.steam_id, Membership.is_active == True,
+            Membership.steam_id == operation.steam_id,
+            or_(Membership.is_active == True, Membership.is_scheduled == True),
             Membership.server_id == None,
         ).limit(1))).first()
         if active:
@@ -105,6 +106,7 @@ class MembershipRemovalsService:
     async def remove(steam_id: str, req: RemoveMembershipRequest, session: AsyncSession) -> RemoveMembershipResponse:
         MembershipRolesService.require_enabled_guild(req.guild_id)
         player = await MembershipRemovalsService._player(steam_id, session)
+        await MembershipsService._require_no_pending_renewal_delivery(steam_id, session)
         request_hash = hashlib.sha256(json.dumps({"steam_id": steam_id, "guild_id": req.guild_id}, sort_keys=True).encode()).hexdigest()
         previous = await session.get(MembershipRemovalOperation, req.operation_id)
         if previous:
@@ -125,7 +127,10 @@ class MembershipRemovalsService:
         memberships = (await session.exec(select(Membership).where(
             Membership.steam_id == steam_id,
         ).order_by(Membership.id).execution_options(populate_existing=True))).all()
-        selected = [membership for membership in memberships if membership.is_active and membership.server_id is None]
+        selected = [membership for membership in memberships
+                    if (membership.is_active or membership.is_scheduled) and membership.server_id is None]
+        if any(membership.discord_guild_id and membership.discord_guild_id != req.guild_id for membership in selected):
+            raise HTTPException(status_code=409, detail={"code": "membership_removal_other_guild"})
         if not selected:
             raise HTTPException(status_code=404, detail={"code": "membership_removal_not_found"})
         role_ids = await MembershipRemovalsService._roles_to_remove(req.guild_id, selected, memberships, session)
@@ -159,8 +164,15 @@ class MembershipRemovalsService:
         # keep each other's PlayerRole alive during the existing revocation checks.
         for membership in selected:
             membership.is_active = False
+            membership.is_scheduled = False
             membership.rcon_sync_status = "SUCCESS"
             session.add(membership)
+        renewals = (await session.exec(select(MembershipRenewalDelivery).where(
+            col(MembershipRenewalDelivery.membership_id).in_([membership.id for membership in selected]),
+        ))).all()
+        for renewal in renewals:
+            renewal.cancelled = True
+            session.add(renewal)
         await session.flush()
         for membership in selected:
             await MembershipsService._deactivate_membership(membership, session)

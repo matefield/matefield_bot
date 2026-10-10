@@ -4,7 +4,11 @@ from fastapi.responses import FileResponse
 from sqlmodel.ext.asyncio.session import AsyncSession
 from wardogs_config import ENVIRONMENT_SETTINGS
 from wardogs_schemas import v1 as schemas
-from wardogs_schemas.dtos import DiscordSnowflake
+from wardogs_schemas.dtos import (
+    DiscordSnowflake, RenewMembershipRequest, RenewMembershipResponse,
+    MembershipRenewalDeliveriesResponse, CompleteMembershipRenewalRequest,
+    CompleteMembershipRenewalResponse,
+)
 
 from src.connections.databases.db import get_session
 from src.modules.v1.schemas.dtos import (
@@ -12,6 +16,7 @@ from src.modules.v1.schemas.dtos import (
     RemoveMembershipRequest, RemoveMembershipResponse,
     CompleteMembershipRemovalRequest, CompleteMembershipRemovalResponse,
 )
+from src.modules.v1.services.membership_renewals_service import MembershipRenewalsService
 from src.modules.v1.services.export_service import (
     generate_export_download_token,
     generate_memberships_csv,
@@ -30,6 +35,23 @@ _EXPORT_TOKEN_TTL_SECONDS = 1800  # 30 minutes
 @router.post("/db/players/membership", dependencies=[Depends(verify_api_key_guard)], response_model=AddMembershipResponse)
 async def add_membership(req: AddMembershipRequest, session: AsyncSession = Depends(get_session)):
     return await MembershipsService.add_membership(req, session)
+
+
+@router.post("/db/players/membership/renew", dependencies=[Depends(verify_api_key_guard)], response_model=RenewMembershipResponse)
+async def renew_membership(req: RenewMembershipRequest, session: AsyncSession = Depends(get_session)):
+    return await MembershipRenewalsService.renew(req, session)
+
+
+@router.get("/discord/membership-renewals/deliveries", dependencies=[Depends(verify_api_key_guard)], response_model=MembershipRenewalDeliveriesResponse)
+async def membership_renewal_deliveries(guild_id: DiscordSnowflake, session: AsyncSession = Depends(get_session)):
+    return await MembershipRenewalsService.deliveries(guild_id, session)
+
+
+@router.post("/discord/membership-renewals/deliveries/{delivery_id}/complete", dependencies=[Depends(verify_api_key_guard)], response_model=CompleteMembershipRenewalResponse)
+async def complete_membership_renewal_delivery(delivery_id: Annotated[int, Path(ge=1, le=2 ** 31 - 1)],
+                                               req: CompleteMembershipRenewalRequest,
+                                               session: AsyncSession = Depends(get_session)):
+    return await MembershipRenewalsService.complete(delivery_id, req, session)
 
 
 @router.post("/db/players/{steam_id}/membership/remove", dependencies=[Depends(verify_api_key_guard)], response_model=RemoveMembershipResponse)
