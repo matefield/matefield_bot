@@ -123,7 +123,7 @@ async def test_omitted_days_reach_warcon_with_the_catalog_expiry(client, session
     assert end - start == timedelta(days=days)
     assert data["warcon"]["status"] == "SUCCESS"
     assert data["discord"]["role_ids"] == [role.discord_role_id]
-    assert delivery.await_args.args == (player.steam_id, data["membership"]["id"], code.upper(), end)
+    assert delivery.await_args.args == (player.steam_id, data["membership"]["id"], name, end)
     assert len((await session.exec(select(Membership))).all()) == 1
 
 

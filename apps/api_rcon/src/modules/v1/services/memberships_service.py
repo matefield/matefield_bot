@@ -304,6 +304,13 @@ class MembershipsService:
             end_time = end_time.replace(tzinfo=timezone.utc)
         if not membership.is_active or (end_time and end_time <= now):
             raise HTTPException(status_code=409, detail="La membresía de esta operación ya no está vigente.")
+        # Existing benefits can still be delivered when their catalog type stops
+        # accepting new memberships. Warcon notes use its current human name.
+        membership_type = (await session.exec(select(MembershipType).where(
+            func.upper(MembershipType.code) == membership.membership_type.strip().upper()
+        ))).first()
+        if not membership_type:
+            raise HTTPException(status_code=409, detail="El tipo de esta membresía ya no está registrado en nuestro sistema.")
         if guild_id:
             if not membership.role_granted_id:
                 raise HTTPException(status_code=409, detail="El rol lógico de esta membresía ya no está configurado.")
@@ -328,7 +335,7 @@ class MembershipsService:
         ))).all()
         slot_expiry = MembershipsService._effective_slot_expiry(active_expiries)
         warcon = await WarconClient().upsert_reserved_slot(
-            membership.steam_id, membership.id, membership.membership_type, slot_expiry
+            membership.steam_id, membership.id, membership_type.name, slot_expiry
         )
         membership.rcon_sync_status = warcon.status
         session.add(membership)
