@@ -576,16 +576,33 @@ class MembershipsService:
             target_steam_id = player.steam_id
 
         offset = max(0, (page - 1) * limit)
-        statement = select(Membership).order_by(col(Membership.start_time).desc(), col(Membership.id).desc())
+        statement = select(Membership)
         total_statement = select(func.count(col(Membership.id)))
         if target_steam_id:
+            # Personal views show current benefits before newer history; the
+            # persisted flag remains authoritative even before expiry maintenance.
+            statement = statement.order_by(col(Membership.is_active).desc())
             statement = statement.where(Membership.steam_id == target_steam_id)
             total_statement = total_statement.where(Membership.steam_id == target_steam_id)
 
+        statement = statement.order_by(col(Membership.start_time).desc(), col(Membership.id).desc())
         statement = statement.offset(offset).limit(limit)
         memberships = (await session.exec(statement)).all()
         total = (await session.exec(total_statement)).one()
         
+        # Enrich only this page; reading historical or roleless records must not
+        # mutate delivery state or require a currently configured Discord role.
+        steam_ids = {membership.steam_id for membership in memberships}
+        players_by_steam: Dict[str, Player] = {}
+        if steam_ids:
+            players = (await session.exec(select(Player).where(col(Player.steam_id).in_(steam_ids)))).all()
+            players_by_steam = {player.steam_id: player for player in players}
+        type_codes = {membership.membership_type.strip().upper() for membership in memberships}
+        types_by_code: Dict[str, MembershipType] = {}
+        if type_codes:
+            types = (await session.exec(select(MembershipType).where(func.upper(MembershipType.code).in_(type_codes)))).all()
+            types_by_code = {m_type.code.upper(): m_type for m_type in types}
+
         # Batch load roles to avoid N+1 queries
         role_ids = {
             r_id for m in memberships
@@ -605,6 +622,8 @@ class MembershipsService:
 
         results = []
         for m in memberships:
+            membership_type = types_by_code.get(m.membership_type.strip().upper())
+            player = players_by_steam.get(m.steam_id)
             special_role_name = None
             special_discord_role_id = None
             if m.special_role_id and m.special_role_id in roles_by_id:
@@ -623,6 +642,8 @@ class MembershipsService:
                 "id": m.id,
                 "steam_id": m.steam_id,
                 "type": m.membership_type,
+                "type_name": membership_type.name if membership_type else m.membership_type,
+                "discord_id": player.discord_id if player else None,
                 "is_active": m.is_active,
                 "is_booster": m.is_booster,
                 "server_id": m.server_id,
