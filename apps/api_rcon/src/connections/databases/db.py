@@ -126,11 +126,11 @@ class MembershipRemovalOperation(SQLModel, table=True):
 
 
 class MembershipRenewalDelivery(SQLModel, table=True):
-    """A scheduled period and its durable, guild-scoped Discord role delivery."""
+    """A durable, guild-scoped role change for an immediate or scheduled membership."""
     __tablename__ = "membership_renewal_deliveries"
     id: Optional[int] = Field(default=None, primary_key=True)
     membership_id: int = Field(foreign_key="memberships.id", index=True)
-    previous_membership_id: int = Field(foreign_key="memberships.id")
+    previous_membership_id: Optional[int] = Field(default=None, foreign_key="memberships.id")
     phase: str = Field(default="START", max_length=5)
     guild_id: str = Field(max_length=20, index=True)
     actor_id: str = Field(max_length=20)

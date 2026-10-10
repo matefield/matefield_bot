@@ -14,6 +14,7 @@ from src.connections.databases.db import (
 )
 from src.modules.v1.services.membership_roles_service import MembershipRolesService
 from src.modules.v1.services.memberships_service import MembershipsService
+from src.modules.v1.services.membership_state_service import MembershipStateService
 from wardogs_schemas.dtos import (
     CompleteMembershipRemovalRequest, CompleteMembershipRemovalResponse,
     MembershipDiscordDelivery, RemoveMembershipRequest, RemoveMembershipResponse,
@@ -43,7 +44,9 @@ class MembershipRemovalsService:
             Membership.server_id == None,
         ).limit(1))).first()
         if active:
-            raise HTTPException(status_code=409, detail={"code": "membership_removal_superseded"})
+            raise HTTPException(status_code=409, detail=await MembershipStateService.detail(
+                "membership_removal_superseded", await session.get(Membership, active), session, operation.guild_id,
+            ))
         response = RemoveMembershipResponse.model_validate_json(operation.result_json)
         if operation.discord_roles_removed:
             response.discord = response.discord.model_copy(update={"role_ids": []})
@@ -106,7 +109,7 @@ class MembershipRemovalsService:
     async def remove(steam_id: str, req: RemoveMembershipRequest, session: AsyncSession) -> RemoveMembershipResponse:
         MembershipRolesService.require_enabled_guild(req.guild_id)
         player = await MembershipRemovalsService._player(steam_id, session)
-        await MembershipsService._require_no_pending_renewal_delivery(steam_id, session)
+        await MembershipsService._require_no_pending_renewal_delivery(steam_id, session, allow_initial_start=True, guild_id=req.guild_id)
         request_hash = hashlib.sha256(json.dumps({"steam_id": steam_id, "guild_id": req.guild_id}, sort_keys=True).encode()).hexdigest()
         previous = await session.get(MembershipRemovalOperation, req.operation_id)
         if previous:
@@ -132,7 +135,9 @@ class MembershipRemovalsService:
         if any(membership.discord_guild_id and membership.discord_guild_id != req.guild_id for membership in selected):
             raise HTTPException(status_code=409, detail={"code": "membership_removal_other_guild"})
         if not selected:
-            raise HTTPException(status_code=404, detail={"code": "membership_removal_not_found"})
+            raise HTTPException(status_code=404, detail=await MembershipStateService.detail(
+                "membership_removal_not_found", await MembershipStateService.latest(steam_id, session, req.guild_id), session, req.guild_id,
+            ))
         role_ids = await MembershipRemovalsService._roles_to_remove(req.guild_id, selected, memberships, session)
         special_ids = {membership.special_role_id for membership in selected if membership.special_role_id}
         preserved_badges = (await session.exec(select(PlayerRole.role_id).where(
@@ -188,6 +193,12 @@ class MembershipRemovalsService:
             discord=MembershipDiscordDelivery(user_id=player.discord_id, guild_id=req.guild_id, role_ids=role_ids),
             warcon=warcon,
         )
+        # The successful receipt proves the administrative removal. Enrich the
+        # response from that evidence before saving the final replayable result.
+        operation.result_json = response.model_dump_json()
+        session.add(operation)
+        contexts = await MembershipStateService.batch(selected, session, req.guild_id)
+        response = response.model_copy(update={"memberships": [contexts[membership.id] for membership in selected if membership.id in contexts]})
         operation.result_json = response.model_dump_json()
         session.add(operation)
         await session.commit()

@@ -54,6 +54,7 @@ class AddMembershipRequest(BaseModel):
     server_id: Optional[int] = None
     payment_source: Optional[str] = "MANUAL"
     guild_id: Optional[DiscordSnowflake] = None
+    actor_id: Optional[DiscordSnowflake] = None
     source: Optional[Literal["DISCORD"]] = None
     operation_id: Optional[str] = Field(default=None, min_length=1, max_length=100)
 
@@ -62,6 +63,20 @@ class AddMembershipRequest(BaseModel):
         if self.source == "DISCORD" and not self.operation_id:
             raise ValueError("operation_id is required for Discord membership creation")
         return self
+
+
+class MembershipStateContext(BaseModel):
+    """A factual period snapshot; the API owns status and the bot formats it."""
+    id: DatabaseId
+    steam_id: str
+    type: str
+    type_name: Optional[str] = None
+    discord_id: Optional[DiscordSnowflake] = None
+    status: Literal["ACTIVE", "SCHEDULED", "NOT_STARTED", "ACTIVATION_PENDING", "EXPIRED", "REMOVED", "INACTIVE"]
+    start_date: datetime
+    end_date: Optional[datetime] = None
+    removed_at: Optional[datetime] = None
+    removed_by: Optional[DiscordSnowflake] = None
 
 
 class CreatedMembershipItem(BaseModel):
@@ -137,6 +152,12 @@ class AddMembershipResponse(BaseModel):
     discord: Optional[MembershipDiscordDelivery] = None
     warcon: Optional[MembershipWarconDelivery] = None
     replayed: bool = False
+    delivery: Optional[MembershipRenewalRoleDelivery] = None
+
+
+class RetryMembershipRequest(BaseModel):
+    guild_id: DiscordSnowflake
+    actor_id: DiscordSnowflake
 
 
 class RenewMembershipRequest(BaseModel):
@@ -156,7 +177,7 @@ class RenewMembershipResponse(AddMembershipResponse):
 class MembershipRenewalRoleDelivery(BaseModel):
     id: DatabaseId
     membership_id: DatabaseId
-    previous_membership_id: DatabaseId
+    previous_membership_id: Optional[DatabaseId] = None
     steam_id: str = Field(strict=True, pattern=r"^[0-9]{17}$")
     user_id: DiscordSnowflake
     guild_id: DiscordSnowflake
@@ -189,6 +210,7 @@ class RemoveMembershipResponse(BaseModel):
     steam_id: str
     operation_id: str
     removed_membership_ids: List[DatabaseId]
+    memberships: List[MembershipStateContext] = Field(default_factory=list)
     discord: MembershipDiscordDelivery
     warcon: MembershipWarconDelivery
     replayed: bool = False

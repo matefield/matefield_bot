@@ -288,7 +288,7 @@ async def test_legacy_replay_keeps_the_hash_and_response_from_before_guild_suppo
     payload = create_payload()
     payload.pop("guild_id")
     req = AddMembershipRequest(**payload)
-    historical_hash = hashlib.sha256(json.dumps(req.model_dump(exclude={"operation_id", "guild_id"}), sort_keys=True).encode()).hexdigest()
+    historical_hash = hashlib.sha256(json.dumps(req.model_dump(exclude={"operation_id", "guild_id", "actor_id"}), sort_keys=True).encode()).hexdigest()
     existing = Membership(steam_id=STEAM, membership_type="regular", role_granted_id=catalog[0].id,
         creation_operation_id=payload["operation_id"], creation_request_hash=historical_hash,
         end_time=datetime.now(timezone.utc) + timedelta(days=30))

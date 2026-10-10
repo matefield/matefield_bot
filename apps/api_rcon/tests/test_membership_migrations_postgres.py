@@ -22,7 +22,7 @@ from sqlalchemy.ext.asyncio import create_async_engine
 
 
 TEMPORARY_DATABASE = re.compile(r"matefield_membership_regression_[a-z0-9_]{8,48}\Z")
-HEAD = "r4n5i6j7k8l9"
+HEAD = "u7q8l9m0n1o2"
 API_ROOT = Path(__file__).resolve().parents[1]
 REPOSITORY = API_ROOT.parents[1]
 STEAM_ID = "76561198012345678"
@@ -155,6 +155,7 @@ def fixture_payloads():
                         "start_date": now, "end_date": None, "is_active": True, "is_booster": False,
                         "role_granted_id": 900001, "rcon_sync_status": "SUCCESS", "payment_source": "MANUAL",
                         "creation_operation_id": "migration-test-command", "creation_request_hash": "f" * 64,
+                        "discord_guild_id": "555555555555555555",
                         "notified_3d": True, "notified_24h": True},
         "role_discord_bindings": {"id": 900001, "role_id": 900001, "guild_id": "555555555555555555",
                                   "discord_role_id": "666666666666666666", "configured_by": "888888888888888888",
@@ -196,8 +197,13 @@ def fingerprint(rows):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("previous_head", [None, "p2l3g4h5i6j7", "0132aeb12a1c", "q3m4h5i6j7k8", "29f437dc92a1"],
-                         ids=["fresh", "local-guild-roles", "upstream-squads", "local-cancellation", "upstream-merged"])
+@pytest.mark.parametrize("previous_head", [
+    None, "p2l3g4h5i6j7", "0132aeb12a1c", "q3m4h5i6j7k8", "29f437dc92a1",
+    "s5o6j7k8l9m0", "t6p7k8l9m0n1",
+], ids=[
+    "fresh", "local-guild-roles", "upstream-squads", "local-cancellation", "upstream-merged",
+    "scheduled-renewals", "published-renewal-merge",
+])
 async def test_upgrade_preserves_both_membership_histories(migration_database, previous_head):
     engine, target = migration_database
     await upgrade(target, previous_head or "head")
@@ -210,6 +216,7 @@ async def test_upgrade_preserves_both_membership_histories(migration_database, p
         assert "role_discord_bindings" not in before_schema.tables
         assert "creation_operation_id" not in before_schema.tables["memberships"].c
         assert "price_ars" not in before_schema.tables["membership_types"].c
+    backfill_expected = previous_head is not None and "discord_guild_id" in before_schema.tables["memberships"].c
     before = await seed_and_snapshot(engine, before_schema)
 
     await upgrade(target, "head")
@@ -220,9 +227,20 @@ async def test_upgrade_preserves_both_membership_histories(migration_database, p
     assert "price_ars" in schema.tables["membership_types"].c
     assert {"global_seeding_seconds", "global_rewarded_seconds"}.issubset(schema.tables["players"].c.keys())
     assert "server_id" in schema.tables["player_sessions"].c
+    assert schema.tables["membership_renewal_deliveries"].c.previous_membership_id.nullable
     after = {}
     async with engine.connect() as connection:
         assert (await connection.execute(text("SELECT version_num FROM alembic_version"))).scalars().all() == [HEAD]
+        deliveries = (await connection.execute(select(schema.tables["membership_renewal_deliveries"]))).mappings().all()
+        if backfill_expected:
+            assert len(deliveries) == 1
+            delivery = deliveries[0]
+            assert delivery["membership_id"] == 900001 and delivery["previous_membership_id"] is None
+            assert delivery["phase"] == "START" and delivery["guild_id"] == "555555555555555555"
+            assert json.loads(delivery["role_ids_to_add_json"]) == ["666666666666666666"]
+            assert delivery["activated"] and not delivery["completed"]
+        else:
+            assert not deliveries
         for name, old_row in before.items():
             table = schema.tables[name]
             predicate = and_(*(column == old_row[column.name] for column in table.primary_key))
