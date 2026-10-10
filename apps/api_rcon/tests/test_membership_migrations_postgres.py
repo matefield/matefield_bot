@@ -22,7 +22,7 @@ from sqlalchemy.ext.asyncio import create_async_engine
 
 
 TEMPORARY_DATABASE = re.compile(r"matefield_membership_regression_[a-z0-9_]{8,48}\Z")
-HEAD = "29f437dc92a1"
+HEAD = "r4n5i6j7k8l9"
 API_ROOT = Path(__file__).resolve().parents[1]
 REPOSITORY = API_ROOT.parents[1]
 STEAM_ID = "76561198012345678"
@@ -159,6 +159,18 @@ def fixture_payloads():
         "role_discord_bindings": {"id": 900001, "role_id": 900001, "guild_id": "555555555555555555",
                                   "discord_role_id": "666666666666666666", "configured_by": "888888888888888888",
                                   "created_at": now, "updated_at": now},
+        "membership_removal_operations": {
+            "operation_id": "migration-test-removal", "request_hash": "e" * 64,
+            "steam_id": STEAM_ID, "guild_id": "555555555555555555", "actor_id": "888888888888888888",
+            "user_id": "777777777777777777", "discord_roles_removed": False, "created_at": now,
+            "result_json": json.dumps({
+                "ok": True, "steam_id": STEAM_ID, "operation_id": "migration-test-removal",
+                "removed_membership_ids": [900000], "replayed": False,
+                "discord": {"user_id": "777777777777777777", "guild_id": "555555555555555555",
+                            "role_ids": ["666666666666666666"]},
+                "warcon": {"status": "SUCCESS", "server_id": "migration-test-server"},
+            }),
+        },
         "squads": {"id": "migration-test-squad", "name": "Migration squad", "tag": "TEST",
                    "leader_steam_id": STEAM_ID, "created_at": now, "total_kills": 7, "total_deaths": 5,
                    "total_cash_earned": 99, "total_matches_played": 2},
@@ -184,8 +196,8 @@ def fingerprint(rows):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("previous_head", [None, "p2l3g4h5i6j7", "0132aeb12a1c"],
-                         ids=["fresh", "local-guild-roles", "upstream-squads"])
+@pytest.mark.parametrize("previous_head", [None, "p2l3g4h5i6j7", "0132aeb12a1c", "q3m4h5i6j7k8", "29f437dc92a1"],
+                         ids=["fresh", "local-guild-roles", "upstream-squads", "local-cancellation", "upstream-merged"])
 async def test_upgrade_preserves_both_membership_histories(migration_database, previous_head):
     engine, target = migration_database
     await upgrade(target, previous_head or "head")
@@ -202,7 +214,7 @@ async def test_upgrade_preserves_both_membership_histories(migration_database, p
 
     await upgrade(target, "head")
     schema = await reflect(engine)
-    assert {"role_discord_bindings", "squads", "squad_members", "squad_invites"}.issubset(schema.tables)
+    assert {"role_discord_bindings", "squads", "squad_members", "squad_invites", "membership_removal_operations"}.issubset(schema.tables)
     assert {"creation_operation_id", "creation_request_hash", "notified_3d", "notified_24h"}.issubset(
         schema.tables["memberships"].c.keys())
     assert "price_ars" in schema.tables["membership_types"].c

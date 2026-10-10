@@ -7,7 +7,7 @@ from fastapi import HTTPException
 from sqlmodel import col, func, or_, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from src.connections.databases.db import Player, Membership, Role, PlayerRole, BotConfig, MembershipType, RoleDiscordBinding, RconServer
+from src.connections.databases.db import Player, Membership, Role, PlayerRole, BotConfig, MembershipType, RoleDiscordBinding, RconServer, MembershipRemovalOperation
 from src.modules.v1.services.membership_roles_service import MembershipRolesService
 from src.connections.apis.rcon import RCONManager
 from src.connections.apis.warcon import WarconClient
@@ -18,6 +18,15 @@ from src.modules.v1.schemas.dtos import AddMembershipRequest, EditMembershipRequ
 logger = logging.getLogger("wardogs.memberships")
 
 class MembershipsService:
+    @staticmethod
+    async def _require_no_pending_removal(steam_id: str, session: AsyncSession) -> None:
+        pending = (await session.exec(select(MembershipRemovalOperation.operation_id).where(
+            MembershipRemovalOperation.steam_id == steam_id,
+            MembershipRemovalOperation.discord_roles_removed == False,
+        ).limit(1))).first()
+        if pending:
+            raise HTTPException(status_code=409, detail={"code": "membership_removal_pending"})
+
     @staticmethod
     async def add_membership(req: AddMembershipRequest, session: AsyncSession) -> Dict[str, Any]:
         if req.source == "DISCORD" and req.guild_id:
@@ -117,6 +126,8 @@ class MembershipsService:
 
         # Determine server_id scope
         server_id = req.server_id if req.server_id is not None else (m_type.server_id if m_type else None)
+
+        await MembershipsService._require_no_pending_removal(req.steam_id, session)
 
         start_date = datetime.now(timezone.utc)
         end_date = MembershipsService._add_days(start_date, days_to_add) if days_to_add > 0 else None
@@ -296,6 +307,7 @@ class MembershipsService:
         if not player:
             raise HTTPException(status_code=409, detail="El jugador de esta membresía ya no está registrado.")
         await session.refresh(membership)
+        await MembershipsService._require_no_pending_removal(membership.steam_id, session)
         if not MembershipsService._valid_discord_id(player.discord_id):
             raise HTTPException(status_code=409, detail="El jugador ya no tiene una cuenta de Discord válida vinculada.")
         now = datetime.now(timezone.utc)
@@ -424,7 +436,12 @@ class MembershipsService:
         membership = await session.get(Membership, membership_id)
         if not membership:
             raise HTTPException(status_code=404, detail="Membership not found")
-            
+        await session.exec(select(Player).where(
+            Player.steam_id == membership.steam_id,
+        ).with_for_update())
+        await session.refresh(membership)
+        await MembershipsService._require_no_pending_removal(membership.steam_id, session)
+
         if req.server_id is not None and await session.get(RconServer, req.server_id) is None:
             raise HTTPException(status_code=404, detail="Servidor RCON no encontrado.")
         # Calculate every requested date before mutating the membership or roles.

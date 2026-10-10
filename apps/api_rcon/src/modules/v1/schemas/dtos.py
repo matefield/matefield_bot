@@ -1,6 +1,10 @@
 # Re-export shared schemas for backwards compatibility.
 from wardogs_schemas.dtos import (
     AddMembershipRequest,
+    RemoveMembershipRequest,
+    RemoveMembershipResponse,
+    CompleteMembershipRemovalRequest,
+    CompleteMembershipRemovalResponse,
     AddMembershipResponse,
     ClaimRewardRequest,
     CompensateRequest,
@@ -39,6 +43,10 @@ from wardogs_schemas.dtos import (
 
 __all__ = [
     "AddMembershipRequest",
+    "RemoveMembershipRequest",
+    "RemoveMembershipResponse",
+    "CompleteMembershipRemovalRequest",
+    "CompleteMembershipRemovalResponse",
     "AddMembershipResponse",
     "ClaimRewardRequest",
     "CompensateRequest",

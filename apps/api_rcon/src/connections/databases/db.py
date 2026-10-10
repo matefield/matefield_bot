@@ -108,6 +108,20 @@ class Membership(SQLModel, table=True):
     role_granted: Role | None = Relationship(sa_relationship_kwargs={"foreign_keys": "[Membership.role_granted_id]"})
     special_role: Role | None = Relationship(sa_relationship_kwargs={"foreign_keys": "[Membership.special_role_id]"})
 
+
+class MembershipRemovalOperation(SQLModel, table=True):
+    """A saved cancellation receipt until the invoking guild confirms Discord delivery."""
+    __tablename__ = "membership_removal_operations"
+    operation_id: str = Field(primary_key=True, max_length=100)
+    request_hash: str = Field(max_length=64)
+    steam_id: str = Field(foreign_key="players.steam_id", index=True)
+    guild_id: str = Field(max_length=20)
+    actor_id: str = Field(max_length=20)
+    user_id: str = Field(max_length=20)
+    result_json: str = Field(sa_column=Column(Text, nullable=False))
+    discord_roles_removed: bool = Field(default=False)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC), sa_column=Column(DateTime(timezone=True), nullable=False))
+
 class PlayerSession(SQLModel, table=True):
     __tablename__ = "player_sessions"
     id: str = Field(default_factory=lambda: str(uuid.uuid4()), primary_key=True)

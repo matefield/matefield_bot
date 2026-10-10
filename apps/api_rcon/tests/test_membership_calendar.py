@@ -26,6 +26,7 @@ async def calendar_membership(session):
                             role_granted_id=original_role.id, end_time=datetime.now(timezone.utc) + timedelta(days=30))
     session.add(membership)
     await session.commit()
+    await session.refresh(membership)
     return membership, original_role, other_role
 
 
@@ -65,6 +66,7 @@ async def test_date_near_calendar_limit_rejects_extension_without_mutation(clien
     membership.end_time = datetime(9999, 12, 31, tzinfo=timezone.utc)
     session.add(membership)
     await session.commit()
+    await session.refresh(membership)
     original_end = membership.end_time
     response = await client.put(f"/api/v1/db/memberships/{membership.id}", json={"add_days": 1})
     assert response.status_code == 400
