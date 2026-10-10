@@ -14,7 +14,8 @@ class WarconDeliveryError(Exception):
 
 
 class WarconClient:
-    NOTE_PREFIX = "Discord | membership:"
+    NOTE_PREFIX = "Discord | membership:"  # Existing entries remain owned by Discord.
+    NOTE_MARKER = " | Discord | ID:#"
 
     def __init__(self):
         settings = ENVIRONMENT_SETTINGS.CONNECTIONS_SETTINGS
@@ -37,15 +38,16 @@ class WarconClient:
             raise HTTPException(status_code=503, detail="Falta configurar la conexión de membresías con Warcon.")
 
     async def upsert_reserved_slot(
-        self, steam_id: str, membership_id: int, membership_type: str, expires_at: datetime | None
+        self, steam_id: str, membership_id: int, membership_type_name: str, expires_at: datetime | None
     ) -> MembershipWarconDelivery:
         """Write only this player, preserve manual entries, and confirm the game applied it."""
         self.validate_configuration()
         if expires_at is not None:
             expires_at = expires_at.replace(tzinfo=timezone.utc) if expires_at.tzinfo is None else expires_at
+        note_suffix = f"{self.NOTE_MARKER}{membership_id}"
         payload = {
             "steamId": steam_id,
-            "reason": f"{self.NOTE_PREFIX}#{membership_id} | type:{membership_type}"[:200],
+            "reason": f"{membership_type_name[:200 - len(note_suffix)]}{note_suffix}",
             "expiresAt": expires_at.astimezone(timezone.utc).isoformat() if expires_at else None,
         }
         entries_path = f"/api/orgs/{self.org_id}/lists/reserve/entries"
@@ -60,7 +62,7 @@ class WarconClient:
                     _, listing = await self._request(client, "GET", entries_path)
                     entries = self._rows(listing.get("entries"))
                     entry = next((row for row in entries if row.get("steamId") == steam_id), None)
-                    if not entry or not str(entry.get("reason", "")).startswith(self.NOTE_PREFIX):
+                    if not entry or not self._is_discord_note(str(entry.get("reason", ""))):
                         raise WarconDeliveryError("El jugador ya tiene un slot reservado en Warcon que no fue creado por Discord.")
                     entry_id = self._entry_id(entry)
                     await self._request(client, "PATCH", f"{entries_path}/{steam_id}", {
@@ -81,6 +83,13 @@ class WarconClient:
         except WarconDeliveryError as exc:
             error = str(exc)
         return MembershipWarconDelivery(status="FAILED", server_id=self.server_id, entry_id=entry_id, error=error)
+
+    @classmethod
+    def _is_discord_note(cls, reason: str) -> bool:
+        name, marker, membership_id = reason.rpartition(cls.NOTE_MARKER)
+        return reason.startswith(cls.NOTE_PREFIX) or bool(
+            name.strip() and marker and membership_id.isascii() and membership_id.isdecimal()
+        )
 
     @staticmethod
     def _object(value) -> dict:

@@ -65,7 +65,7 @@ async def test_discord_creation_returns_saved_dates_roles_and_confirmed_warcon(c
     membership = (await session.exec(select(Membership))).one()
     assert membership.rcon_sync_status == "SUCCESS"
     assert (membership.end_time - membership.start_time).days == 7
-    delivery.assert_awaited_once_with(membership.steam_id, membership.id, "EXPRESS", membership.end_time.replace(tzinfo=timezone.utc))
+    delivery.assert_awaited_once_with(membership.steam_id, membership.id, "Express", membership.end_time.replace(tzinfo=timezone.utc))
 
 
 @pytest.mark.asyncio
@@ -245,41 +245,67 @@ async def test_warcon_public_api_creation_sets_discord_notes_expiry_and_checks_g
     requests = AsyncMock(return_value=(201, {"ok": True, "entry": {"id": "entry-1"},
                                            "sync": {"servers": [applied_sync()]}}))
     monkeypatch.setattr(WarconClient, "_request", requests)
-    result = await WarconClient().upsert_reserved_slot("76561198000000001", 42, "EXPRESS", expiry)
+    result = await WarconClient().upsert_reserved_slot("76561198000000001", 42, "VIP Express", expiry)
     assert result.status == "SUCCESS"
     args = requests.await_args.args
     assert args[1:3] == ("POST", "/api/orgs/test-org/lists/reserve/entries")
-    assert args[3] == {"steamId": "76561198000000001", "reason": "Discord | membership:#42 | type:EXPRESS",
+    assert args[3] == {"steamId": "76561198000000001", "reason": "VIP Express | Discord | ID:#42",
                        "expiresAt": expiry.isoformat()}
 
 
 @pytest.mark.asyncio
-async def test_warcon_retry_updates_own_entry_without_delete_then_applies(warcon_settings, monkeypatch):
+@pytest.mark.parametrize("existing_note", [
+    "Discord | membership:#1 | type:EXPRESS",
+    "Discord | membership:#1 | VIP Express",
+    "VIP Express | Discord | ID:#1",
+])
+async def test_warcon_retry_updates_own_entry_without_delete_then_applies(warcon_settings, monkeypatch, existing_note):
     requests = AsyncMock(side_effect=[
         (409, {"error": {"code": "duplicate"}}),
-        (200, {"ok": True, "entries": [{"id": "entry-1", "steamId": "steam-1", "reason": "Discord | membership:#1 | type:EXPRESS"}]}),
+        (200, {"ok": True, "entries": [{"id": "entry-1", "steamId": "steam-1", "reason": existing_note}]}),
         (200, {"ok": True, "entry": {"steamId": "steam-1"}}),
         (200, {"ok": True, "sync": applied_sync()}),
     ])
     monkeypatch.setattr(WarconClient, "_request", requests)
-    result = await WarconClient().upsert_reserved_slot("steam-1", 2, "PERMANENT", None)
+    result = await WarconClient().upsert_reserved_slot("steam-1", 2, "VIP Permanente", None)
     assert result.status == "SUCCESS" and result.entry_id == "entry-1"
     assert [call.args[1] for call in requests.await_args_list] == ["POST", "GET", "PATCH", "POST"]
     assert requests.await_args_list[2].args[-1]["expiresAt"] is None
+    assert requests.await_args_list[2].args[-1]["reason"] == "VIP Permanente | Discord | ID:#2"
     assert requests.await_args_list[3].args[2] == "/api/servers/test-server/lists/sync"
 
 
 @pytest.mark.asyncio
-async def test_warcon_manual_entry_is_preserved(warcon_settings, monkeypatch):
+@pytest.mark.parametrize("manual_note", [
+    "Staff", "VIP Normal", "VIP Normal | Discord", "VIP Normal | Discord | ID:#invalid",
+    "VIP Normal | Discord | ID:#1 | Staff", " | Discord | ID:#1",
+    "VIP Normal | Discord | ID:#١",
+])
+async def test_warcon_manual_entry_is_preserved(warcon_settings, monkeypatch, manual_note):
     requests = AsyncMock(side_effect=[
         (409, {"error": {"code": "duplicate"}}),
-        (200, {"ok": True, "entries": [{"id": "manual", "steamId": "steam-1", "reason": "Staff"}]}),
+        (200, {"ok": True, "entries": [{"id": "manual", "steamId": "steam-1", "reason": manual_note}]}),
     ])
     monkeypatch.setattr(WarconClient, "_request", requests)
     result = await WarconClient().upsert_reserved_slot("steam-1", 2, "EXPRESS", None)
     assert result.status == "FAILED"
     assert "no fue creado por Discord" in result.error
     assert requests.await_count == 2
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("name", ["VIP Normal", "VIP " + "ñ" * 250])
+async def test_warcon_notes_put_human_name_first_and_preserve_discord_id_within_limit(warcon_settings, monkeypatch, name):
+    requests = AsyncMock(return_value=(201, {"ok": True, "entry": {"id": "entry-50"},
+                                           "sync": {"servers": [applied_sync()]}}))
+    monkeypatch.setattr(WarconClient, "_request", requests)
+    result = await WarconClient().upsert_reserved_slot("steam-1", 50, name, None)
+    assert result.status == "SUCCESS"
+    suffix = " | Discord | ID:#50"
+    note = requests.await_args.args[3]["reason"]
+    assert note == name[:200 - len(suffix)] + suffix
+    assert len(note) <= 200
+    assert WarconClient._is_discord_note(note)
 
 
 @pytest.mark.asyncio

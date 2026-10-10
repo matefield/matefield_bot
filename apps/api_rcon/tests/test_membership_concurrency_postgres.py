@@ -210,7 +210,7 @@ async def test_warcon_delivery_serializes_before_later_membership(postgres_engin
 
         async def mock_delivery(_client, steam_id, membership_id, membership_type, expiry):
             nonlocal first_delivery_pid
-            if membership_type == "express":
+            if membership_type == "VIP Express":
                 first_delivery_pid = await backend_pid(first_session)
                 first_delivery_started.set()
                 await release_delivery.wait()
