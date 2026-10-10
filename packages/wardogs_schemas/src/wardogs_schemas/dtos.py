@@ -138,6 +138,32 @@ class AddMembershipResponse(BaseModel):
     replayed: bool = False
 
 
+class RemoveMembershipRequest(BaseModel):
+    operation_id: str = Field(strict=True, min_length=1, max_length=100, pattern=r"^[A-Za-z0-9._:-]+$")
+    guild_id: DiscordSnowflake
+    actor_id: DiscordSnowflake
+
+
+class RemoveMembershipResponse(BaseModel):
+    ok: Literal[True] = True
+    steam_id: str
+    operation_id: str
+    removed_membership_ids: List[DatabaseId]
+    discord: MembershipDiscordDelivery
+    warcon: MembershipWarconDelivery
+    replayed: bool = False
+
+
+class CompleteMembershipRemovalRequest(BaseModel):
+    guild_id: DiscordSnowflake
+    actor_id: DiscordSnowflake
+
+
+class CompleteMembershipRemovalResponse(BaseModel):
+    ok: Literal[True] = True
+    operation_id: str
+
+
 class EditMembershipRequest(BaseModel):
     days: Optional[int] = None
     add_days: Optional[int] = None

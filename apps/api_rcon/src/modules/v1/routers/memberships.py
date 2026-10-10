@@ -9,9 +9,12 @@ from src.security.guard import verify_api_key_guard
 from src.connections.databases.db import get_session
 from wardogs_config import ENVIRONMENT_SETTINGS
 from src.modules.v1.schemas.dtos import (
-    AddMembershipRequest, AddMembershipResponse, EditMembershipRequest, CompensateRequest
+    AddMembershipRequest, AddMembershipResponse, EditMembershipRequest, CompensateRequest,
+    RemoveMembershipRequest, RemoveMembershipResponse,
+    CompleteMembershipRemovalRequest, CompleteMembershipRemovalResponse,
 )
 from src.modules.v1.services.memberships_service import MembershipsService
+from src.modules.v1.services.membership_removals_service import MembershipRemovalsService
 from src.modules.v1.services.export_service import (
     generate_memberships_csv,
     generate_export_download_token,
@@ -27,6 +30,17 @@ _EXPORT_TOKEN_TTL_SECONDS = 1800  # 30 minutes
 @router.post("/db/players/membership", dependencies=[Depends(verify_api_key_guard)], response_model=AddMembershipResponse)
 async def add_membership(req: AddMembershipRequest, session: AsyncSession = Depends(get_session)):
     return await MembershipsService.add_membership(req, session)
+
+
+@router.post("/db/players/{steam_id}/membership/remove", dependencies=[Depends(verify_api_key_guard)], response_model=RemoveMembershipResponse)
+async def remove_player_membership(steam_id: str, req: RemoveMembershipRequest, session: AsyncSession = Depends(get_session)):
+    return await MembershipRemovalsService.remove(steam_id, req, session)
+
+
+@router.post("/db/players/{steam_id}/membership/remove/{operation_id}/complete", dependencies=[Depends(verify_api_key_guard)], response_model=CompleteMembershipRemovalResponse)
+async def complete_membership_removal(steam_id: str, operation_id: str, req: CompleteMembershipRemovalRequest,
+                                      session: AsyncSession = Depends(get_session)):
+    return await MembershipRemovalsService.complete(steam_id, operation_id, req, session)
 
 @router.put("/db/memberships/{membership_id}", dependencies=[Depends(verify_api_key_guard)], response_model=schemas.Ok)
 async def edit_membership(membership_id: Annotated[int, Path(ge=1, le=2 ** 31 - 1)], req: EditMembershipRequest, session: AsyncSession = Depends(get_session)):

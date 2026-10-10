@@ -474,3 +474,112 @@ async def test_configure_waits_for_unassign_and_preserves_the_new_binding(
         assert binding.discord_role_id == replacement_role
         assert (await session.exec(select(func.count(Membership.id)))).one() == 0
     assert warcon_deliveries == []
+
+
+async def seed_active_removal_membership(engine):
+    await seed_scoped_catalog(engine)
+    async with AsyncSession(engine, expire_on_commit=False) as session:
+        role = (await session.exec(select(Role).where(Role.code == "VIP"))).one()
+        membership = Membership(steam_id=STEAM_A, membership_type="regular", role_granted_id=role.id)
+        session.add_all([membership, PlayerRole(steam_id=STEAM_A, role_id=role.id)])
+        await session.commit()
+
+
+@pytest.mark.asyncio
+async def test_removal_holds_player_lock_until_warcon_and_blocks_new_global_membership(
+    postgres_engine, isolated_warcon_settings, isolated_guild_settings, warcon_deliveries, monkeypatch,
+):
+    from src.connections.databases.db import MembershipRemovalOperation
+    from src.modules.v1.services.membership_removals_service import MembershipRemovalsService
+    from wardogs_schemas.dtos import RemoveMembershipRequest
+
+    await seed_active_removal_membership(postgres_engine)
+    warcon_started, release_warcon = asyncio.Event(), asyncio.Event()
+    async with AsyncSession(postgres_engine, expire_on_commit=False) as removal_session, \
+            AsyncSession(postgres_engine, expire_on_commit=False) as creation_session:
+        removal_pid = await backend_pid(removal_session)
+        creation_pid = await backend_pid(creation_session)
+
+        async def remove_slot(_client, steam_id, membership_ids):
+            assert steam_id == STEAM_A and membership_ids
+            warcon_started.set()
+            await release_warcon.wait()
+            return delivered()
+
+        monkeypatch.setattr(WarconClient, "remove_reserved_slot", remove_slot)
+        removal = asyncio.create_task(MembershipRemovalsService.remove(STEAM_A, RemoveMembershipRequest(
+            operation_id="remove-before-create", guild_id=GUILD_ID, actor_id=ACTOR_ID,
+        ), removal_session))
+        creation = None
+        try:
+            async with asyncio.timeout(10):
+                await warcon_started.wait()
+                creation = asyncio.create_task(MembershipsService.add_membership(
+                    scoped_request("create-during-removal"), creation_session,
+                ))
+                await assert_database_lock(postgres_engine, creation_pid, removal_pid)
+                assert not creation.done()
+                release_warcon.set()
+                assert (await removal).ok is True
+                with pytest.raises(HTTPException) as rejected:
+                    await creation
+                assert rejected.value.status_code == 409
+                assert rejected.value.detail == {"code": "membership_removal_pending"}
+        finally:
+            release_warcon.set()
+            await stop_tasks(*[task for task in (removal, creation) if task is not None])
+    async with AsyncSession(postgres_engine) as session:
+        assert (await session.exec(select(Membership))).one().is_active is False
+        assert (await session.exec(select(MembershipRemovalOperation))).one().discord_roles_removed is False
+        assert (await session.exec(select(PlayerRole))).all() == []
+    assert warcon_deliveries == []
+
+
+@pytest.mark.asyncio
+async def test_concurrent_remove_commands_share_one_canonical_pending_receipt(
+    postgres_engine, isolated_warcon_settings, isolated_guild_settings, monkeypatch,
+):
+    from src.connections.databases.db import MembershipRemovalOperation
+    from src.modules.v1.services.membership_removals_service import MembershipRemovalsService
+    from wardogs_schemas.dtos import RemoveMembershipRequest
+
+    await seed_active_removal_membership(postgres_engine)
+    warcon_started, release_warcon = asyncio.Event(), asyncio.Event()
+    warcon_calls = []
+    async with AsyncSession(postgres_engine, expire_on_commit=False) as first_session, \
+            AsyncSession(postgres_engine, expire_on_commit=False) as second_session:
+        first_pid = await backend_pid(first_session)
+        second_pid = await backend_pid(second_session)
+
+        async def remove_slot(_client, steam_id, membership_ids):
+            warcon_calls.append(steam_id)
+            warcon_started.set()
+            await release_warcon.wait()
+            return delivered()
+
+        monkeypatch.setattr(WarconClient, "remove_reserved_slot", remove_slot)
+        first = asyncio.create_task(MembershipRemovalsService.remove(STEAM_A, RemoveMembershipRequest(
+            operation_id="remove-first", guild_id=GUILD_ID, actor_id=ACTOR_ID,
+        ), first_session))
+        second = None
+        try:
+            async with asyncio.timeout(10):
+                await warcon_started.wait()
+                second = asyncio.create_task(MembershipRemovalsService.remove(STEAM_A, RemoveMembershipRequest(
+                    operation_id="remove-second", guild_id=GUILD_ID, actor_id=ACTOR_ID,
+                ), second_session))
+                await assert_database_lock(postgres_engine, second_pid, first_pid)
+                assert not second.done()
+                release_warcon.set()
+                first_result, second_result = await first, await second
+                assert first_result.replayed is False
+                assert second_result.replayed is True
+                assert first_result.operation_id == second_result.operation_id == "remove-first"
+                assert first_result.removed_membership_ids == second_result.removed_membership_ids
+        finally:
+            release_warcon.set()
+            await stop_tasks(*[task for task in (first, second) if task is not None])
+    async with AsyncSession(postgres_engine) as session:
+        assert len((await session.exec(select(MembershipRemovalOperation))).all()) == 1
+        assert (await session.exec(select(Membership))).one().is_active is False
+    assert warcon_calls == [STEAM_A]
