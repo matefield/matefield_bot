@@ -79,30 +79,33 @@ async def test_permanent_membership_sends_no_expiry(client, discord_player, deli
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("other_days", [None, 30])
-async def test_new_short_membership_preserves_longer_existing_slot(client, session, discord_player, delivery, other_days):
+async def test_add_rejects_different_existing_active_plan_without_touching_warcon(client, session, discord_player, delivery, other_days):
     player, _, _ = discord_player
     longer_expiry = datetime.now(timezone.utc) + timedelta(days=other_days) if other_days else None
     other = Membership(steam_id=player.steam_id, membership_type="OTHER", end_time=longer_expiry)
     session.add(other)
     await session.commit()
     response = await client.post("/api/v1/db/players/membership", json=command_payload())
-    assert response.status_code == 200
-    assert delivery.await_args.args[-1] == longer_expiry
+    assert response.status_code == 409
+    assert response.json()["detail"] == {"code": "membership_already_active"}
+    assert (await session.exec(select(Membership))).one().id == other.id
+    delivery.assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_renewal_accumulates_days_and_preserves_membership_history(client, session, discord_player, delivery):
+async def test_add_does_not_implicitly_renew_an_active_membership(client, session, discord_player, delivery):
     first = (await client.post("/api/v1/db/players/membership", json=command_payload())).json()
-    second = (await client.post("/api/v1/db/players/membership", json=command_payload(operation_id="another-operation"))).json()
-    first_end = datetime.fromisoformat(first["membership"]["end_date"].replace("Z", "+00:00"))
-    second_end = datetime.fromisoformat(second["membership"]["end_date"].replace("Z", "+00:00"))
-    assert second_end - first_end == timedelta(days=7)
-    rows = (await session.exec(select(Membership).order_by(Membership.id))).all()
-    assert len(rows) == 2 and rows[0].is_active is False and rows[1].is_active is True
+    second = await client.post("/api/v1/db/players/membership", json=command_payload(operation_id="another-operation"))
+    assert second.status_code == 409
+    assert second.json()["detail"] == {"code": "membership_already_active"}
+    rows = (await session.exec(select(Membership))).all()
+    assert len(rows) == 1 and rows[0].is_active is True
+    assert rows[0].end_time.replace(tzinfo=timezone.utc) == datetime.fromisoformat(first["membership"]["end_date"].replace("Z", "+00:00"))
+    assert delivery.await_count == 1
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("existing_days,added_days", [(0, 3653), (3650, 7)])
+@pytest.mark.parametrize("existing_days,added_days", [(0, 3653)])
 async def test_warcon_ten_year_limit_is_validated_before_creation(client, session, discord_player, delivery, existing_days, added_days):
     if existing_days:
         session.add(Membership(steam_id=discord_player[0].steam_id, membership_type="EXPRESS",
@@ -497,7 +500,7 @@ async def test_missing_special_role_is_rejected_before_membership_foreign_key_wr
 
 
 @pytest.mark.asyncio
-async def test_invalid_legacy_discord_special_role_preserves_membership_on_failed_renewal(client, session, discord_player, delivery):
+async def test_add_rejects_active_membership_before_invalid_explicit_special_role(client, session, discord_player, delivery):
     await client.post("/api/v1/db/players/membership", json=command_payload())
     original = (await session.exec(select(Membership))).one()
     special = Role(code="BAD_SPECIAL", name="Bad special", role_type="SPECIAL", discord_role_id="invalid")
@@ -505,7 +508,8 @@ async def test_invalid_legacy_discord_special_role_preserves_membership_on_faile
     await session.commit()
     response = await client.post("/api/v1/db/players/membership", json=command_payload(
         operation_id="renewal-with-invalid-special", special_role_id=special.id))
-    assert response.status_code == 400
+    assert response.status_code == 409
+    assert response.json()["detail"] == {"code": "membership_already_active"}
     assert original.is_active is True
     assert len((await session.exec(select(Membership))).all()) == 1
     assert delivery.await_count == 1

@@ -78,7 +78,8 @@ async def test_replay_uses_current_name_of_disabled_type_without_extending_membe
 
     assert replay.status_code == 200
     assert replay.json()["replayed"] is True
-    assert replay.json()["membership"] == first.json()["membership"]
+    assert replay.json()["membership"]["type_name"] == "VIP Comunidad"
+    assert {key: value for key, value in replay.json()["membership"].items() if key != "type_name"} == {key: value for key, value in first.json()["membership"].items() if key != "type_name"}
     assert len((await session.exec(select(Membership))).all()) == 1
     assert warcon_delivery.await_count == 2
     assert warcon_delivery.await_args_list[0].args[2] == "VIP Colaboradores — 30 días"

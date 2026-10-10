@@ -10,6 +10,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from src.connections.databases.db import Player, SteamLinkRedemption, Membership, Role, PlayerRole, MatchPlayerStats, PlayerSession
 from src.connections.apis.steam import get_player_summary, get_player_summaries
 from src.modules.v1.schemas.dtos import LinkAccountRequest, UnlinkAccountRequest, EditPlayerRequest
+from src.modules.v1.services.memberships_service import MembershipsService
 
 class PlayersService:
     @staticmethod
@@ -70,10 +71,12 @@ class PlayersService:
 
     @staticmethod
     async def unlink_account(req: UnlinkAccountRequest, session: AsyncSession) -> Dict[str, Any]:
-        statement = select(Player).where(Player.discord_id == req.discord_id)
+        statement = select(Player).where(Player.discord_id == req.discord_id).with_for_update().execution_options(populate_existing=True)
         player = (await session.exec(statement)).first()
         if not player:
             raise HTTPException(status_code=404, detail="No se encontró ningún jugador vinculado a esta cuenta de Discord.")
+        await MembershipsService._require_no_pending_renewal_delivery(player.steam_id, session)
+        await MembershipsService._require_no_scheduled_renewal(player.steam_id, session)
         player.discord_id = None
         session.add(player)
         await session.commit()
@@ -186,6 +189,12 @@ class PlayersService:
             raise HTTPException(status_code=404, detail="Player not found")
             
         if req.discord_id is not None:
+            player = (await session.exec(select(Player).where(
+                Player.steam_id == steam_id,
+            ).with_for_update().execution_options(populate_existing=True))).one()
+            if (req.discord_id or None) != player.discord_id:
+                await MembershipsService._require_no_pending_renewal_delivery(steam_id, session)
+                await MembershipsService._require_no_scheduled_renewal(steam_id, session)
             if req.discord_id:
                 existing = (await session.exec(select(Player).where(Player.discord_id == req.discord_id))).first()
                 if existing and existing.steam_id != steam_id:
