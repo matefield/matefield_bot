@@ -43,7 +43,7 @@ class MembershipRolesService:
             role_statement = role_statement.with_for_update()
         role = (await session.exec(role_statement)).first() if m_type.role_id else None
         if not role:
-            raise HTTPException(status_code=400, detail="El tipo de membresía no tiene un rol lógico configurado en nuestro sistema.")
+            raise HTTPException(status_code=400, detail={"code": "membership_type_role_missing"})
         return m_type, role
 
     @staticmethod
@@ -161,5 +161,5 @@ class MembershipRolesService:
         ).execution_options(populate_existing=True))).all()
         by_role = {binding.role_id: binding.discord_role_id for binding in bindings}
         if any(role_id not in by_role for role_id in unique_ids):
-            raise HTTPException(status_code=409, detail="Falta configurar un rol de esta membresía para este servidor de Discord.")
+            raise HTTPException(status_code=409, detail={"code": "membership_role_configuration_missing"})
         return list(dict.fromkeys(by_role[role_id] for role_id in unique_ids))

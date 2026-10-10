@@ -8,7 +8,7 @@ from sqlmodel import select
 
 from src.connections.apis.warcon import WarconClient
 from src.connections.apis.rcon import RCONManager
-from src.connections.databases.db import Membership, MembershipType, Player, Role
+from src.connections.databases.db import Membership, MembershipType, Player, PlayerRole, Role
 from src.modules.v1.services.memberships_service import MembershipsService
 from wardogs_config import ENVIRONMENT_SETTINGS
 from wardogs_schemas.dtos import MembershipWarconDelivery
@@ -187,6 +187,8 @@ async def test_missing_role_is_rejected_before_save(client, session, discord_pla
     await session.commit()
     response = await client.post("/api/v1/db/players/membership", json=command_payload())
     assert response.status_code == 400
+    assert response.json()["detail"] == {"code": "membership_type_role_missing"}
+    assert (await session.exec(select(PlayerRole))).all() == []
     assert (await session.exec(select(Membership))).all() == []
     delivery.assert_not_awaited()
 
@@ -507,3 +509,17 @@ async def test_invalid_legacy_discord_special_role_preserves_membership_on_faile
     assert original.is_active is True
     assert len((await session.exec(select(Membership))).all()) == 1
     assert delivery.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_missing_legacy_discord_role_reports_configuration_error_before_save(client, session, discord_player, delivery):
+    role = discord_player[2]
+    role.discord_role_id = None
+    session.add(role)
+    await session.commit()
+    response = await client.post("/api/v1/db/players/membership", json=command_payload())
+    assert response.status_code == 400
+    assert response.json()["detail"] == {"code": "membership_role_configuration_missing"}
+    assert (await session.exec(select(Membership))).all() == []
+    assert (await session.exec(select(PlayerRole))).all() == []
+    delivery.assert_not_awaited()

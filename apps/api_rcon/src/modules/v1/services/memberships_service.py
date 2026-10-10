@@ -64,11 +64,11 @@ class MembershipsService:
                 raise HTTPException(status_code=400, detail="El jugador no tiene una cuenta de Discord válida vinculada.")
             role = (await session.exec(select(Role).where(Role.id == m_type.role_id))).first() if m_type.role_id else None
             if not role:
-                raise HTTPException(status_code=400, detail="El tipo de membresía no tiene un rol lógico configurado.")
+                raise HTTPException(status_code=400, detail={"code": "membership_type_role_missing"})
             if req.guild_id:
                 await MembershipRolesService.resolve_roles(req.guild_id, [role.id], session, lock=False)
             elif not MembershipsService._valid_discord_id(role.discord_role_id):
-                raise HTTPException(status_code=400, detail="El tipo de membresía no tiene un rol de Discord configurado.")
+                raise HTTPException(status_code=400, detail={"code": "membership_role_configuration_missing"})
             if req.role_granted_id is not None and req.role_granted_id != role.id:
                 raise HTTPException(status_code=400, detail="El rol de membresía debe corresponder al tipo seleccionado.")
         else:
@@ -325,7 +325,7 @@ class MembershipsService:
             raise HTTPException(status_code=409, detail="El tipo de esta membresía ya no está registrado en nuestro sistema.")
         if guild_id:
             if not membership.role_granted_id:
-                raise HTTPException(status_code=409, detail="El rol lógico de esta membresía ya no está configurado.")
+                raise HTTPException(status_code=409, detail={"code": "membership_type_role_missing"})
             role_ids = await MembershipRolesService.resolve_roles(
                 guild_id, [role_id for role_id in (membership.role_granted_id, membership.special_role_id) if role_id], session, lock=False
             )

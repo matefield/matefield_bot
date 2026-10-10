@@ -216,6 +216,7 @@ def test_allowlist_setting_is_loaded_from_environment(monkeypatch):
 async def test_creation_without_binding_fails_before_membership_and_warcon(client, session, catalog, game_delivery):
     response = await client.post("/api/v1/db/players/membership", json=create_payload())
     assert response.status_code == 409
+    assert response.json()["detail"] == {"code": "membership_role_configuration_missing"}
     assert (await session.exec(select(Membership))).all() == []
     assert (await session.exec(select(PlayerRole))).all() == []
     game_delivery.assert_not_awaited()
