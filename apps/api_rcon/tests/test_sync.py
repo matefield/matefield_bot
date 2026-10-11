@@ -229,3 +229,25 @@ async def test_sync_preserves_special_role_on_expiration(client: AsyncClient, se
     assert preserved_pr is not None
 
 
+
+@pytest.mark.asyncio
+async def test_sync_identifies_membership_owned_roles_without_hiding_unrelated_roles(client, session):
+    from src.connections.databases.db import MembershipType, RoleDiscordBinding
+
+    vip = Role(code="CATALOG_VIP", name="VIP", role_type="VIP", discord_role_id="1001")
+    badge = Role(code="MEMBERSHIP_BADGE", name="Badge", role_type="SPECIAL", discord_role_id="2001")
+    unrelated = Role(code="UNRELATED", name="Other role", role_type="SPECIAL", discord_role_id="3001")
+    session.add_all([vip, badge, unrelated, Player(steam_id="role-owner-player", discord_id="4444")])
+    await session.commit()
+    session.add(MembershipType(code="REGULAR", name="Regular", role_id=vip.id))
+    session.add(Membership(steam_id="role-owner-player", membership_type="REGULAR", is_active=False,
+                           role_granted_id=vip.id, special_role_id=badge.id))
+    session.add(RoleDiscordBinding(role_id=badge.id, guild_id="123456789012345678", discord_role_id="4001",
+                                  configured_by="123456789012345679"))
+    await session.commit()
+
+    response = await client.post("/api/v1/db/sync_memberships")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["membership_managed_roles"] == [1001, 2001, 4001]
+    assert set(data["managed_special_roles"]) == {2001, 3001}

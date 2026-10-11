@@ -5,6 +5,7 @@ import asyncio
 import hikari
 from crescent.ext import tasks
 from src.model import Model
+from wardogs_config import BOT_SETTINGS
 import os
 import datetime
 import logging
@@ -150,7 +151,7 @@ async def match_monitor():
                 logger.info(f"[Match Monitor] 🏅 MVP Detectado: {mvp_name} ({mvp_steam}) con {mvp.kills} kills.")
                 
                 # Regalar VIP al MVP
-                if mvp_steam:
+                if mvp_steam and BOT_SETTINGS.DISCORD_MEMBERSHIP_MANAGEMENT_ENABLED:
                     membership_type = await plugin.model.api.get_bot_config("MVP_MEMBERSHIP_TYPE") or DEFAULT_MVP_MEMBERSHIP_TYPE
                     days_str = await plugin.model.api.get_bot_config("MVP_MEMBERSHIP_DAYS")
                     try:
@@ -291,6 +292,24 @@ async def vip_monitor():
     except Exception as e:
         logger.exception(f"[VIP Monitor] Error en la automatización: {repr(e)}")
 
+def membership_roles_owned_by_laracord(sync_result: dict[str, Any]) -> set[int]:
+    """Keep membership roles outside every legacy writer during the handover."""
+    if BOT_SETTINGS.DISCORD_MEMBERSHIP_MANAGEMENT_ENABLED:
+        return set()
+    role_maps = sync_result.get("role_maps", {})
+    roles = set(role_maps.values()) if isinstance(role_maps, dict) else set()
+    membership_roles = sync_result.get("membership_managed_roles")
+    if isinstance(membership_roles, list):
+        roles.update(membership_roles)
+    else:
+        # An older API cannot distinguish membership badges from unrelated roles.
+        # Leave these untouched until its ownership metadata is available.
+        roles.update(sync_result.get("managed_special_roles", []))
+        for user in sync_result.get("sync_data", []):
+            roles.update(user.get("special_roles", []))
+    return {int(role) for role in roles if str(role).isdigit()}
+
+
 async def execute_membership_sync(
     app: hikari.GatewayBot,
     model: Model,
@@ -316,7 +335,8 @@ async def execute_membership_sync(
     wl_str = configs.get("SYNC_WHITELIST", "")
     whitelist = set(wl_str.split(",")) if wl_str else set()
 
-    all_managed_roles = {int(r) for r in set(role_maps.values()).union(set(managed_special_roles)) if str(r).isdigit()}
+    membership_roles = membership_roles_owned_by_laracord(res)
+    all_managed_roles = {int(r) for r in set(role_maps.values()).union(set(managed_special_roles)) if str(r).isdigit()} - membership_roles
 
     # El rol de link nunca debe ser removido por la sincronización de membresías como expirado
     link_role_str = configs.get("LINK_ROLE_ID")
@@ -379,6 +399,7 @@ async def execute_membership_sync(
         for sr in sorted(special_roles):
             roles_to_have.append(int(sr))
 
+        roles_to_have = [role for role in roles_to_have if role not in membership_roles]
         if link_role_str and link_role_str.isdigit():
             roles_to_have.append(int(link_role_str))
 
@@ -440,7 +461,8 @@ async def sync_single_user_roles(app: Any, model: Any, discord_id: int | str, ta
         role_maps = res.get("role_maps", {}) if isinstance(res.get("role_maps"), dict) else {}
         managed_special_roles = res.get("managed_special_roles", []) if isinstance(res.get("managed_special_roles"), list) else []
 
-        all_managed_roles = {int(r) for r in set(role_maps.values()).union(set(managed_special_roles)) if str(r).isdigit()}
+        membership_roles = membership_roles_owned_by_laracord(res)
+        all_managed_roles = {int(r) for r in set(role_maps.values()).union(set(managed_special_roles)) if str(r).isdigit()} - membership_roles
 
         link_role_str = configs.get("LINK_ROLE_ID")
         link_role_id = int(link_role_str) if (link_role_str and link_role_str.isdigit()) else None
@@ -463,6 +485,7 @@ async def sync_single_user_roles(app: Any, model: Any, discord_id: int | str, ta
                 if str(sr).isdigit():
                     roles_to_have.add(int(sr))
 
+            roles_to_have.difference_update(membership_roles)
             if link_role_id:
                 roles_to_have.add(link_role_id)
 

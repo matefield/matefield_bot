@@ -932,6 +932,23 @@ class MembershipsService:
                 role_maps[mt.name] = dr_val
                 role_maps[mt.code.replace("_", " ")] = dr_val
 
+        # Membership delivery owns VIPs and badges linked to any membership, even
+        # after expiry. Include guild bindings so Python cannot undo Laracord roles.
+        membership_role_ids = {r.id for r in all_roles if r.role_type == "VIP"}
+        membership_role_ids.update(mt.role_id for mt in all_types if mt.role_id)
+        historical_roles = (await session.exec(select(
+            Membership.role_granted_id, Membership.special_role_id,
+        ).distinct())).all()
+        membership_role_ids.update(role_id for pair in historical_roles for role_id in pair if role_id)
+        membership_managed_roles = {int(r.discord_role_id) for r in all_roles
+                                    if r.id in membership_role_ids and r.discord_role_id
+                                    and str(r.discord_role_id).isdigit()}
+        bindings = (await session.exec(select(RoleDiscordBinding).where(
+            col(RoleDiscordBinding.role_id).in_(membership_role_ids),
+        ))).all() if membership_role_ids else []
+        membership_managed_roles.update(int(binding.discord_role_id) for binding in bindings
+                                        if str(binding.discord_role_id).isdigit())
+
         managed_special_roles = [
             int(r.discord_role_id)
             for r in all_roles
@@ -942,6 +959,7 @@ class MembershipsService:
             "sync_data": discord_sync_data, 
             "role_maps": role_maps,
             "managed_special_roles": managed_special_roles,
+            "membership_managed_roles": sorted(membership_managed_roles),
             "expired_count": len(expired),
             "active_rcon_slots": len(active_steam_ids)
         }

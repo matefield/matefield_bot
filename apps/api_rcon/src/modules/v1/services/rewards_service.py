@@ -18,6 +18,7 @@ from src.modules.v1.schemas.dtos import (
 )
 from src.modules.v1.services.memberships_service import MembershipsService
 from src.modules.v1.services.roles_service import RolesService
+from wardogs_config import BOT_SETTINGS
 
 STEAM_ID_64_LENGTH = 17
 
@@ -298,6 +299,14 @@ class RewardsService:
                 status_code=400,
                 detail=f"Puntos insuficientes. Tienes {player.reward_points} pts y la recompensa cuesta {reward.cost_points} pts.",
             )
+
+        if (not BOT_SETTINGS.DISCORD_MEMBERSHIP_MANAGEMENT_ENABLED
+                and reward.delivery_type.upper() == "AUTOMATIC"
+                and reward.reward_type.upper() == "MEMBERSHIP"):
+            raise HTTPException(status_code=409, detail="Las membresías se administran desde Laracord; este canje automático está deshabilitado.")
+
+        if reward.delivery_type.upper() == "AUTOMATIC" and reward.reward_type.upper() == "ROLE":
+            await RolesService.validate_manual_role_change(reward.reward_value, session)
 
         # Generate unique claim voucher
         while True:

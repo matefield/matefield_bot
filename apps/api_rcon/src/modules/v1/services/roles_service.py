@@ -2,11 +2,42 @@ from typing import Any, Dict, List, Optional
 from fastapi import HTTPException
 from sqlmodel import select, func, or_
 from sqlmodel.ext.asyncio.session import AsyncSession
+from wardogs_config import BOT_SETTINGS
 
-from src.connections.databases.db import Player, Role, PlayerRole
+from src.connections.databases.db import Membership, MembershipType, Player, Role, PlayerRole
 from src.modules.v1.schemas.dtos import RoleRegisterRequest
 
 class RolesService:
+    @staticmethod
+    async def _require_manual_management(role: Role, session: AsyncSession) -> None:
+        """Keep manual role endpoints from changing membership-owned benefits."""
+        if BOT_SETTINGS.DISCORD_MEMBERSHIP_MANAGEMENT_ENABLED:
+            return
+
+        protected = role.role_type.strip().upper() == "VIP"
+        if not protected:
+            protected = (await session.exec(select(MembershipType.id).where(
+                MembershipType.role_id == role.id,
+            ).limit(1))).first() is not None
+        if not protected:
+            protected = (await session.exec(select(Membership.id).where(or_(
+                Membership.role_granted_id == role.id,
+                Membership.special_role_id == role.id,
+            )).limit(1))).first() is not None
+        if protected:
+            raise HTTPException(
+                status_code=409,
+                detail="Los roles de membresía se administran desde Laracord. Usá los comandos /membership para gestionar sus beneficios.",
+            )
+
+    @staticmethod
+    async def validate_manual_role_change(role_identifier: str, session: AsyncSession) -> None:
+        """Validate reward fulfillment before spending points or creating a voucher."""
+        role = await RolesService._find_role(role_identifier, session)
+        if not role:
+            raise HTTPException(status_code=404, detail=f"Role code or discord_role_id '{role_identifier}' not registered")
+        await RolesService._require_manual_management(role, session)
+
     @staticmethod
     async def _find_role(role_identifier: str, session: AsyncSession) -> Optional[Role]:
         clean_id = role_identifier.strip()
@@ -85,6 +116,8 @@ class RolesService:
         if not role:
             raise HTTPException(status_code=404, detail=f"Role code or discord_role_id '{role_id}' not registered")
             
+        await RolesService._require_manual_management(role, session)
+
         player_role = (await session.exec(select(PlayerRole).where(PlayerRole.steam_id == steam_id, PlayerRole.role_id == role.id))).first()
         if player_role:
             return {"ok": True, "message": "Player already has this role"}
@@ -106,6 +139,8 @@ class RolesService:
         if not role:
             raise HTTPException(status_code=404, detail="Role not found")
             
+        await RolesService._require_manual_management(role, session)
+
         player_role = (await session.exec(select(PlayerRole).where(PlayerRole.steam_id == steam_id, PlayerRole.role_id == role.id))).first()
         if not player_role:
             raise HTTPException(status_code=404, detail="Player does not have this role")

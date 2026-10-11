@@ -51,6 +51,7 @@ Crea o edita los archivos `.env.local`, `.env.dev` o `.env.prod`. Utiliza `.env.
 
 ```env
 DISCORD_TOKEN=tu_token_de_discord
+DISCORD_MEMBERSHIP_MANAGEMENT_ENABLED=true
 RCON_URL=http://rcon-mock:7776        # Opcional, el sistema usa la base de datos para registrar multiples RCONs.
 RCON_PASSWORD=tu_password_rcon
 DATABASE_URL=postgresql+asyncpg://user:pass@host:5432/dbname
@@ -59,6 +60,17 @@ API_BASE_URL=http://api_rcon:8000
 PUBLIC_API_URL=http://localhost:8000
 STEAM_WEB_API_KEY=tu_steam_api_key
 ```
+
+`DISCORD_MEMBERSHIP_MANAGEMENT_ENABLED` vale `true` por defecto para conservar
+la gestión de membresías del bot Python. Si Laracord administra las membresías,
+configuralo en `false` tanto en `api_rcon` como en `discord_bot`: Python deja de
+registrar sus comandos de membresías y de modificar sus roles, incluidos los
+especiales asociados. Los comandos manuales de roles también rechazan esos beneficios
+antes de modificar la base de datos; las altas, renovaciones y bajas de membresías
+en la API siguen disponibles. El rol LINK y los roles ajenos a membresías siguen activos.
+También se deshabilitan los regalos VIP al MVP y los canjes automáticos legacy de
+membresías o de sus roles; estos canjes se rechazan antes de gastar puntos o generar
+vouchers. El mantenimiento de vencimientos de la API continúa funcionando.
 
 El panel de `/player link_channel` usa un botón verde de interacción: Discord identifica a quien lo pulsa.
 Si ya tiene Steam vinculado, recibe una confirmación privada. Si no, recibe un enlace privado «Ir a Steam»,

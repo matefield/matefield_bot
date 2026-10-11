@@ -228,7 +228,9 @@ class RolesRemoveAll:
             res = await plugin.model.api.sync_memberships()
             role_maps = res.get("role_maps", {})
             managed_special_roles = res.get("managed_special_roles", [])
-            all_managed_roles = set(role_maps.values()).union(set(managed_special_roles))
+            from src.plugins.tasks import membership_roles_owned_by_laracord
+            all_managed_roles = {int(role) for role in set(role_maps.values()).union(set(managed_special_roles))
+                                 if str(role).isdigit()} - membership_roles_owned_by_laracord(res)
 
             link_role_id = await plugin.model.api.get_bot_config("LINK_ROLE_ID")
             if link_role_id and link_role_id.isdigit():

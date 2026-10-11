@@ -347,3 +347,103 @@ async def test_rewards_requires_linked_account(client: AsyncClient, session: Asy
     assert resp_claim_after.json()["ok"] is True
 
 
+
+@pytest.mark.asyncio
+async def test_membership_reward_handover_rejects_before_spending_points(client, session, monkeypatch):
+    from wardogs_config import BOT_SETTINGS
+    monkeypatch.setattr(BOT_SETTINGS, "DISCORD_MEMBERSHIP_MANAGEMENT_ENABLED", False)
+    player = Player(steam_id="76561198000009001", discord_id="reward-owner-test", reward_points=100)
+    session.add(player)
+    await session.commit()
+    await RewardsService._ensure_defaults(session)
+
+    response = await client.post("/api/v1/rewards/claim", json={
+        "player_identifier": player.discord_id, "reward_code": "VIP_MONTH",
+    })
+    assert response.status_code == 409
+    await session.refresh(player)
+    assert player.reward_points == 100
+    assert not (await session.exec(select(RewardClaim))).all()
+    assert not (await session.exec(select(Membership))).all()
+
+
+@pytest.mark.asyncio
+async def test_non_membership_reward_remains_available_during_handover(client, session, monkeypatch):
+    from wardogs_config import BOT_SETTINGS
+    monkeypatch.setattr(BOT_SETTINGS, "DISCORD_MEMBERSHIP_MANAGEMENT_ENABLED", False)
+    player = Player(steam_id="76561198000009002", discord_id="manual-reward-test", reward_points=500)
+    reward = RewardItem(code="MANUAL_TEST", name="Manual test", cost_points=25,
+                        delivery_type="MANUAL", reward_type="GAME_KEY", reward_value="KEY")
+    session.add_all([player, reward])
+    await session.commit()
+
+    response = await client.post("/api/v1/rewards/claim", json={
+        "player_identifier": player.discord_id, "reward_code": reward.code,
+    })
+    assert response.status_code == 200
+    await session.refresh(player)
+    assert player.reward_points == 475
+    assert len((await session.exec(select(RewardClaim))).all()) == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("role_type,attached_to_membership", [("VIP", False), ("SPECIAL", True)])
+async def test_protected_role_reward_rejects_before_points_voucher_or_role_mutations(client, session, monkeypatch, mocker, role_type, attached_to_membership):
+    from wardogs_config import BOT_SETTINGS
+    from src.connections.databases.db import Role, PlayerRole
+
+    monkeypatch.setattr(BOT_SETTINGS, "DISCORD_MEMBERSHIP_MANAGEMENT_ENABLED", False)
+    player = Player(steam_id="protected-role-reward", discord_id="protected-reward-user", reward_points=100)
+    role = Role(code="PROTECTED_REWARD", name="Protected reward", role_type=role_type)
+    reward = RewardItem(code="PROTECTED_ROLE", name="Protected role", cost_points=25,
+                        delivery_type="AUTOMATIC", reward_type="ROLE", reward_value=role.code)
+    session.add_all([player, role, reward])
+    await session.flush()
+    session.add(PlayerRole(steam_id=player.steam_id, role_id=role.id))
+    if attached_to_membership:
+        session.add(Membership(steam_id=player.steam_id, membership_type="historical", is_active=False,
+                               special_role_id=role.id))
+    await session.commit()
+    add = mocker.spy(session, "add")
+    flush = mocker.spy(session, "flush")
+    commit = mocker.spy(session, "commit")
+    voucher = mocker.spy(RewardsService, "generate_voucher_code")
+
+    response = await client.post("/api/v1/rewards/claim", json={
+        "player_identifier": player.discord_id, "reward_code": reward.code,
+    })
+
+    assert response.status_code == 409 and "Laracord" in response.json()["detail"]
+    assert player.reward_points == 100  # No rollback or refresh is needed to restore it.
+    add.assert_not_called()
+    flush.assert_not_called()
+    commit.assert_not_called()
+    voucher.assert_not_called()
+    assert not (await session.exec(select(RewardClaim))).all()
+    assert await session.get(PlayerRole, (player.steam_id, role.id)) is not None
+    await session.refresh(player)
+    assert player.reward_points == 100
+
+
+@pytest.mark.asyncio
+async def test_automatic_unrelated_role_reward_remains_available(client, session, monkeypatch):
+    from wardogs_config import BOT_SETTINGS
+    from src.connections.databases.db import Role, PlayerRole
+
+    monkeypatch.setattr(BOT_SETTINGS, "DISCORD_MEMBERSHIP_MANAGEMENT_ENABLED", False)
+    player = Player(steam_id="ordinary-role-reward", discord_id="ordinary-reward-user", reward_points=100)
+    role = Role(code="COACH", name="Coach", role_type="SPECIAL")
+    reward = RewardItem(code="COACH_ROLE", name="Coach role", cost_points=25,
+                        delivery_type="AUTOMATIC", reward_type="ROLE", reward_value=role.code)
+    session.add_all([player, role, reward])
+    await session.commit()
+
+    response = await client.post("/api/v1/rewards/claim", json={
+        "player_identifier": player.discord_id, "reward_code": reward.code,
+    })
+
+    assert response.status_code == 200 and response.json()["status"] == "DELIVERED"
+    assert player.reward_points == 75
+    assert await session.get(PlayerRole, (player.steam_id, role.id)) is not None
+    claims = (await session.exec(select(RewardClaim))).all()
+    assert len(claims) == 1 and claims[0].status == "DELIVERED"

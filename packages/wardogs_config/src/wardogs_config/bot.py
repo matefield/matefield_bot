@@ -12,6 +12,12 @@ class DiscordBotSettings(BaseAppConfig):
         description="Discord bot token",
     )
 
+    DISCORD_MEMBERSHIP_MANAGEMENT_ENABLED: bool = pydantic.Field(
+        default=True,
+        validation_alias="DISCORD_MEMBERSHIP_MANAGEMENT_ENABLED",
+        description="Allow the legacy Python bot to manage membership commands and roles",
+    )
+
     API_BASE_URL: str = pydantic.Field(
         default="http://127.0.0.1:8000",
         validation_alias="API_BASE_URL",

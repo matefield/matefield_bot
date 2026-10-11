@@ -34,6 +34,9 @@ client = crescent.Client(bot, model)
 
 # Cargar plugins (aqui cargaremos los comandos)
 client.plugins.load_folder("src.plugins")
+if not BOT_SETTINGS.DISCORD_MEMBERSHIP_MANAGEMENT_ENABLED:
+    client.plugins.unload("src.plugins.memberships")
+    logger.info("Membership commands and roles are managed by Laracord.")
 
 if __name__ == "__main__":
     if BOT_SETTINGS.DISCORD_TOKEN in ("tu_token_aqui", "", None):
