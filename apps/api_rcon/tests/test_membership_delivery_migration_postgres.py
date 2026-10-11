@@ -21,7 +21,7 @@ VIP = "444444444444444447"
 BADGE = "444444444444444448"
 MIGRATION = Path(__file__).resolve().parents[1] / (
     "src/connections/databases/migrations/versions/"
-    "t6p7k8l9m0n1_generalize_membership_deliveries.py"
+    "u7q8l9m0n1o2_generalize_membership_deliveries.py"
 )
 
 
@@ -105,6 +105,9 @@ async def test_backfill_covers_known_discord_grants_and_expired_users_without_in
     async with postgres_engine.begin() as connection:
         await connection.run_sync(lambda sync: run_migration(sync, "upgrade"))
 
+    async with postgres_engine.connect() as connection:
+        columns = await connection.run_sync(lambda sync: inspect(sync).get_columns("membership_renewal_deliveries"))
+    assert next(column for column in columns if column["name"] == "previous_membership_id")["nullable"]
     saved = await receipts(postgres_engine)
     assert set(saved) == {
         (1, "START"), (1, "END"), (2, "START"), (3, "START"), (3, "END"),

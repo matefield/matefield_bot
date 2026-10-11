@@ -6,8 +6,8 @@ from datetime import datetime, timezone
 from alembic import op
 import sqlalchemy as sa
 
-revision = "t6p7k8l9m0n1"
-down_revision = "s5o6j7k8l9m0"
+revision = "u7q8l9m0n1o2"
+down_revision = "t6p7k8l9m0n1"
 logger = logging.getLogger("alembic.runtime.migration")
 
 branch_labels = None
