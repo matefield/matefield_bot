@@ -3,22 +3,23 @@ import logging
 import math
 import time
 from typing import Any
+
 import crescent
 import hikari
 
-from src.model import Model
-from src.hooks import admin_only
 from src.groups import membership_group, membership_type_group, player_group
+from src.hooks import admin_only
+from src.model import Model
 from src.trace import get_tracer
 
 logger = logging.getLogger(__name__)
 plugin = crescent.Plugin[hikari.GatewayBot, Model]()
 
-_cached_types: list[dict] = []
+_cached_types: list[Any] = []
 _last_types_fetch: float = 0.0
 _types_lock = asyncio.Lock()
 
-async def get_cached_membership_types() -> list[dict]:
+async def get_cached_membership_types():
     global _cached_types, _last_types_fetch
     now = time.time()
     if now - _last_types_fetch > 30 or not _cached_types:
@@ -41,9 +42,9 @@ async def autocomplete_tipo(
         types = await get_cached_membership_types()
         results = []
         for t in types:
-            code = t.get("code", "")
-            name = t.get("name", code)
-            price = t.get("price_usd", 0.0)
+            code = t.code or ""
+            name = t.name or code
+            price = t.price_usd or 0.0
             price_str = f" (${price})" if price > 0 else ""
             label = f"{name} [{code}]{price_str}"[:100]
             if val in code.lower() or val in name.lower():
@@ -99,7 +100,7 @@ class DbAddMembership:
                     await ctx.respond(tracer.append_to_message("❌ Este usuario no tiene una cuenta de Steam enlazada en la base de datos."))
                     return
                 
-                steam_id = player_info.get("steam_id")
+                steam_id = player_info.steam_id
                 if not steam_id:
                     t["status"] = "ERROR"
                     t["details"] = "Sin Steam ID"
@@ -326,8 +327,7 @@ async def on_membership_button_click(event: hikari.InteractionCreateEvent) -> No
         is_next = custom_id.startswith("mem_next_")
         new_page = current_page + 1 if is_next else current_page - 1
         
-        if new_page < 1:
-            new_page = 1
+        new_page = max(new_page, 1)
             
         try:
             res = await plugin.model.api.get_paginated_memberships(page=new_page, limit=10)
@@ -384,8 +384,7 @@ async def on_membership_button_click(event: hikari.InteractionCreateEvent) -> No
         limit = 5
 
         new_page = current_page - 1 if action == "prev" else current_page + 1
-        if new_page < 1:
-            new_page = 1
+        new_page = max(new_page, 1)
 
         try:
             res = await plugin.model.api.get_paginated_memberships(page=new_page, limit=limit, discord_id=str(target_discord_id))
@@ -393,8 +392,7 @@ async def on_membership_button_click(event: hikari.InteractionCreateEvent) -> No
             total = res.get("total", 0)
             total_pages = max(1, math.ceil(total / limit)) if total > 0 else 1
 
-            if new_page > total_pages:
-                new_page = total_pages
+            new_page = min(new_page, total_pages)
 
             embed, components = build_player_memberships_view(
                 plugin.app,
@@ -438,8 +436,10 @@ class DbEditMembership:
                 is_active=self.activa,
                 is_booster=self.booster
             )
+            import typing
+
             from src.plugins.tasks import execute_membership_sync
-            asyncio.create_task(execute_membership_sync(ctx.app, plugin.model, target_guild_id=ctx.guild_id))
+            asyncio.create_task(execute_membership_sync(typing.cast(hikari.GatewayBot, ctx.app), plugin.model, target_guild_id=ctx.guild_id))
             await ctx.respond(f"✅ Membresía ID {self.id_membresia} actualizada exitosamente. 🔄 Sincronizando en segundo plano...")
         except Exception as e:
             await ctx.respond(f"❌ Error: {e}")
@@ -456,8 +456,10 @@ class DbRemoveMembership:
         await ctx.defer()
         try:
             await plugin.model.api.delete_membership(self.id_membresia)
+            import typing
+
             from src.plugins.tasks import execute_membership_sync
-            asyncio.create_task(execute_membership_sync(ctx.app, plugin.model, target_guild_id=ctx.guild_id))
+            asyncio.create_task(execute_membership_sync(typing.cast(hikari.GatewayBot, ctx.app), plugin.model, target_guild_id=ctx.guild_id))
             await ctx.respond(f"✅ Membresía ID {self.id_membresia} eliminada exitosamente. 🔄 Sincronizando en segundo plano...")
         except Exception as e:
             await ctx.respond(f"❌ Error: {e}")
@@ -602,8 +604,10 @@ class ExtenderMembresia:
         await ctx.defer()
         try:
             await plugin.model.api.edit_membership(membership_id=self.membership_id, add_days=self.dias)
+            import typing
+
             from src.plugins.tasks import execute_membership_sync
-            asyncio.create_task(execute_membership_sync(ctx.app, plugin.model, target_guild_id=ctx.guild_id))
+            asyncio.create_task(execute_membership_sync(typing.cast(hikari.GatewayBot, ctx.app), plugin.model, target_guild_id=ctx.guild_id))
             await ctx.respond(f"✅ Membresía #{self.membership_id} extendida por {self.dias} días exitosamente. 🔄 Sincronizando en segundo plano...")
         except Exception as e:
             await ctx.respond(f"❌ Error al extender membresía: {e}")
@@ -633,18 +637,18 @@ class DbMembershipTypeList:
             )
 
             for t in types:
-                code = t.get("code", "")
-                name = t.get("name", code)
-                price = t.get("price_usd", 0.0)
-                billing = "Mensualidad" if t.get("billing_type") == "RECURRING" else "Pago Único"
-                days = t.get("default_days", 30)
+                code = t.code
+                name = t.name or code
+                price = t.price_usd or 0.0
+                billing = "Mensualidad" if t.billing_type == "RECURRING" else "Pago Único"
+                days = t.default_days or 30
                 days_str = "Permanente" if days == 0 else f"{days} días"
-                max_q = t.get("max_quota")
-                used_q = t.get("current_usage", 0)
+                max_q = t.max_quota
+                used_q = t.current_usage or 0
                 quota_str = f"{used_q}/{max_q}" if max_q is not None else f"{used_q} (Ilimitado)"
-                server_name = t.get("server_name", "Global (Todos)")
-                role_id = t.get("discord_role_id")
-                role_name = t.get("role_name")
+                server_name = t.server_name or "Global (Todos)"
+                role_id = t.discord_role_id
+                role_name = t.role_name
                 
                 if role_id:
                     role_str = f"<@&{role_id}>"
@@ -653,7 +657,7 @@ class DbMembershipTypeList:
                 else:
                     role_str = "Ninguno"
 
-                status_icon = "🟢" if t.get("is_active", True) else "🔴 (Inactivo)"
+                status_icon = "🟢" if t.is_active else "🔴 (Inactivo)"
 
                 price_line = f"💵 **Precio:** ${price:.2f} USD ({billing})\n"
 
@@ -665,7 +669,7 @@ class DbMembershipTypeList:
                     f"🛡️ **Rol:** {role_str}\n"
                     f"🏷️ **Estado:** {status_icon}"
                 )
-                embed.add_field(name=f"#{t.get('id')} - {name} (`{code}`)", value=field_value, inline=True)
+                embed.add_field(name=f"#{t.id} - {name} (`{code}`)", value=field_value, inline=True)
 
             await ctx.respond(embed=embed)
         except Exception as e:
@@ -713,7 +717,7 @@ class DbMembershipTypeCreate:
                 role_id=self.rol_db_id,
                 server_id=self.servidor
             )
-            msg = res.get("message", "Tipo de membresía creado.")
+            msg = res.message
             await ctx.respond(f"✅ {msg}")
         except Exception as e:
             await ctx.respond(f"❌ Error al crear tipo de membresía: {e}")
@@ -771,7 +775,7 @@ class DbMembershipTypeEdit:
                 return
 
             res = await plugin.model.api.update_membership_type(self.tipo_id, **kwargs)
-            msg = res.get("message", "Tipo de membresía actualizado.")
+            msg = res.message
             await ctx.respond(f"✅ {msg}")
         except Exception as e:
             await ctx.respond(f"❌ Error al actualizar tipo de membresía: {e}")

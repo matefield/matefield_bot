@@ -1,13 +1,12 @@
-import csv
-import sys
 import argparse
-from datetime import datetime, timezone
+import csv
+from datetime import UTC, datetime
+
 from sqlmodel import Session, create_engine, select
-import os
+from src.config import ENVIRONMENT_SETTINGS
 
 # We will run this inside the api_rcon container
-from src.connections.databases.db import Player, Membership, Role, PlayerRole
-from src.config import ENVIRONMENT_SETTINGS
+from src.connections.databases.db import Membership, Player, PlayerRole, Role
 
 # DB URL
 engine = create_engine(ENVIRONMENT_SETTINGS.CONNECTIONS_SETTINGS.DATABASE_URL.replace("+asyncpg", ""))
@@ -19,7 +18,7 @@ def parse_date(date_str):
         return None
     try:
         dt = datetime.strptime(date_str, "%Y-%m-%d")
-        return dt.replace(tzinfo=timezone.utc)
+        return dt.replace(tzinfo=UTC)
     except Exception as e:
         print(f"Error parsing date {date_str}: {e}")
         return None
@@ -53,7 +52,7 @@ def main(csv_path, dry_run=True):
         if not dry_run:
             founder_role = session.exec(select(Role).where(Role.id == FUNDADOR_ROLE_ID)).first()
             if not founder_role:
-                founder_role = Role(id=FUNDADOR_ROLE_ID, name="Fundador")
+                founder_role = Role(id=FUNDADOR_ROLE_ID, name="Fundador", code="FUNDADOR", role_type="SPECIAL")
                 session.add(founder_role)
                 session.commit()
         
@@ -92,7 +91,7 @@ def main(csv_path, dry_run=True):
             # 2. Membership
             membership_type = None
             end_date = None
-            start_date = parse_date(start_date_str) or datetime.now(timezone.utc)
+            start_date = parse_date(start_date_str) or datetime.now(UTC)
             
             if "vip seed" in obs.lower():
                 membership_type = "VIP_SEED"
@@ -142,7 +141,7 @@ def main(csv_path, dry_run=True):
                     )
                 ).first()
                 if existing_role:
-                    print(f"[Roles] ALREADY HAS FUNDADOR ROLE")
+                    print("[Roles] ALREADY HAS FUNDADOR ROLE")
                 else:
                     if not dry_run:
                         pr = PlayerRole(steam_id=steam_id, role_id=FUNDADOR_ROLE_ID)

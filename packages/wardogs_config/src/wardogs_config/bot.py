@@ -1,4 +1,5 @@
 import pydantic
+
 from wardogs_config.base import BaseAppConfig
 
 

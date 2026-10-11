@@ -1,19 +1,19 @@
 import logging
-import os
 import shutil
-from datetime import datetime, timezone, timedelta
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any, List, Optional
-from sqlalchemy import select as sa_select, text
+from typing import Any
+
+from sqlalchemy import select as sa_select
+from sqlalchemy import text
 from sqlmodel import SQLModel
 from sqlmodel.ext.asyncio.session import AsyncSession
-
 from wardogs_config import ENVIRONMENT_SETTINGS
 
 logger = logging.getLogger("wardogs.backup")
 
 
-def get_backup_dir(base_dir: Optional[Path | str] = None) -> Path:
+def get_backup_dir(base_dir: Path | str | None = None) -> Path:
     """Returns the backup directory as a resolved Path, creating it if needed."""
     if base_dir:
         path = Path(base_dir)
@@ -40,7 +40,7 @@ def _escape_sql_value(val: Any) -> str:
 
 async def create_database_sql_backup(
     session: AsyncSession,
-    backup_dir: Optional[Path | str] = None
+    backup_dir: Path | str | None = None
 ) -> Path:
     """
     Dumps the full PostgreSQL database into a system-compatible SQL file
@@ -48,15 +48,15 @@ async def create_database_sql_backup(
     Enforces the retention policy after creation.
     """
     target_dir = get_backup_dir(backup_dir)
-    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
     sql_file = target_dir / f"backup_{timestamp}.sql"
 
     sorted_tables = SQLModel.metadata.sorted_tables
 
-    sql_lines: List[str] = [
+    sql_lines: list[str] = [
         "-- --------------------------------------------------------",
         "-- Matefield Database SQL Backup",
-        f"-- Generated at: {datetime.now(timezone.utc).isoformat()}",
+        f"-- Generated at: {datetime.now(UTC).isoformat()}",
         "-- --------------------------------------------------------",
         "BEGIN;",
         ""
@@ -122,13 +122,13 @@ def cleanup_old_backups(
 ) -> int:
     """Removes timestamped SQL backups older than max_days while keeping at least keep_min."""
     deleted_count = 0
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     cutoff = now - timedelta(days=max_days)
 
     files = sorted(backup_dir.glob("backup_*.sql"), key=lambda p: p.stat().st_mtime)
     while len(files) > keep_min:
         oldest = files[0]
-        mtime = datetime.fromtimestamp(oldest.stat().st_mtime, tz=timezone.utc)
+        mtime = datetime.fromtimestamp(oldest.stat().st_mtime, tz=UTC)
         if mtime < cutoff:
             try:
                 oldest.unlink()

@@ -1,6 +1,7 @@
 import pytest
 from src.connections.apis.rcon import _update_ini_array
 
+
 def test_update_ini_array_creates_section_when_missing():
     initial_text = ""
     section = "[/Script/Squad.SquadGameMode]"
@@ -108,7 +109,6 @@ async def test_rcon_client_get_bans_from_live_endpoint(mocker):
 @pytest.mark.asyncio
 async def test_rcon_client_get_bans_fallback_to_config(mocker):
     from src.connections.apis.rcon import RCONClient
-    from wardogs_schemas import v1 as schemas
     client = RCONClient("http://fake:7776", "pass")
     
     # If /v1/bans raises exception, fallback to config

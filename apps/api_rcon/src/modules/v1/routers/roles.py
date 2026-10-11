@@ -1,12 +1,11 @@
-from typing import Any, Dict, List
 from fastapi import APIRouter, Depends
 from sqlmodel.ext.asyncio.session import AsyncSession
 from wardogs_schemas import v1 as schemas
 
-from src.security.guard import verify_api_key_guard
 from src.connections.databases.db import get_session
 from src.modules.v1.schemas.dtos import RoleRegisterRequest
 from src.modules.v1.services.roles_service import RolesService
+from src.security.guard import verify_api_key_guard
 
 router = APIRouter(tags=["Roles"])
 

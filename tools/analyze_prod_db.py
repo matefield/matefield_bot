@@ -1,7 +1,7 @@
 import asyncio
-import os
-from sqlalchemy.ext.asyncio import create_async_engine
+
 from sqlalchemy import text
+from sqlalchemy.ext.asyncio import create_async_engine
 
 DATABASE_URL = "postgresql+asyncpg://matefield_user:matefield_password@localhost:5432/matefield_db"
 engine = create_async_engine(DATABASE_URL, echo=False)

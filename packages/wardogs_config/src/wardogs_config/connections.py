@@ -1,5 +1,6 @@
-from typing import Optional
+
 import pydantic
+
 from wardogs_config.base import BaseAppConfig
 
 
@@ -66,7 +67,7 @@ class ConnectionSettings(BaseAppConfig):
         description="Bind port for the uvicorn server",
     )
 
-    DISCORD_GENERAL_CHANNEL_URL: Optional[str] = pydantic.Field(
+    DISCORD_GENERAL_CHANNEL_URL: str | None = pydantic.Field(
         default=None,
         validation_alias="DISCORD_GENERAL_CHANNEL_URL",
         description="Deep link URL to the general Discord channel",

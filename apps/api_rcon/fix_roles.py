@@ -1,6 +1,10 @@
 import asyncio
-from sqlmodel import select, text
-from src.connections.databases.db import engine, Role, MembershipType, Membership, PlayerRole
+
+from sqlmodel import text
+from src.connections.databases.db import (
+    engine,
+)
+
 
 async def main():
     async with engine.begin() as conn:

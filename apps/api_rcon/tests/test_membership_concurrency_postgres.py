@@ -525,7 +525,12 @@ async def test_removal_holds_player_lock_until_warcon_and_blocks_new_global_memb
                 with pytest.raises(HTTPException) as rejected:
                     await creation
                 assert rejected.value.status_code == 409
-                assert rejected.value.detail == {"code": "membership_removal_pending"}
+                assert rejected.value.detail["code"] == "membership_removal_pending"
+                context = rejected.value.detail["membership"]
+                assert context["status"] == "REMOVED"
+                assert context["type_name"] == "VIP Normal"
+                assert context["start_date"] is not None and context["end_date"] is None
+                assert context["removed_by"] == ACTOR_ID and context["removed_at"] is not None
         finally:
             release_warcon.set()
             await stop_tasks(*[task for task in (removal, creation) if task is not None])

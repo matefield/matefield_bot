@@ -68,9 +68,9 @@ registrar sus comandos de membresías y de modificar sus roles, incluidos los
 especiales asociados. Los comandos manuales de roles también rechazan esos beneficios
 antes de modificar la base de datos; las altas, renovaciones y bajas de membresías
 en la API siguen disponibles. El rol LINK y los roles ajenos a membresías siguen activos.
-También se deshabilitan los regalos VIP al MVP y los canjes automáticos legacy de
-membresías o de sus roles; estos canjes se rechazan antes de gastar puntos o generar
-vouchers. El mantenimiento de vencimientos de la API continúa funcionando.
+También se deshabilitan los avisos de vencimiento por mensaje privado del bot Python,
+los regalos VIP al MVP y los canjes automáticos legacy de membresías o de sus roles;
+estos canjes se rechazan antes de gastar puntos o generar vouchers. El mantenimiento de vencimientos de la API continúa funcionando.
 
 El panel de `/player link_channel` usa un botón verde de interacción: Discord identifica a quien lo pulsa.
 Si ya tiene Steam vinculado, recibe una confirmación privada. Si no, recibe un enlace privado «Ir a Steam»,
@@ -195,6 +195,24 @@ uv run pytest apps/api_rcon/tests/test_membership_concurrency_postgres.py
 Estas pruebas comprueban los bloqueos del último cupo, el orden de las entregas
 y la exclusión mutua entre desasignaciones, altas y configuraciones de roles;
 usan Warcon simulado y crean y eliminan tablas solamente en esa base temporal.
+
+
+Las migraciones de membresías y las de squads se unen en el head
+`29f437dc92a1`. Las bases existentes en `p2l3g4h5i6j7` o `0132aeb12a1c`
+aplican la rama pendiente con `alembic upgrade head`. La revisión de creación
+idempotente usa ahora `7bd48ca30901` para evitar reutilizar el ID de global seeding.
+
+Para verificar una instalación vacía y ambos caminos de actualización, usá otra
+base temporal vacía con el mismo prefijo y configurá su URL en
+`MEMBERSHIP_MIGRATION_POSTGRES_TEST_URL`:
+
+```bash
+uv run pytest apps/api_rcon/tests/test_membership_migrations_postgres.py
+```
+
+La suite comprueba el esquema final y que los datos existentes permanezcan
+iguales; limpia sus tablas y enums después de cada caso. La creación y eliminación
+de la base temporal queda a cargo de quien ejecuta las pruebas.
 
 ## Motor de Sincronización Automática (Multi-Server Polling)
 La aplicación incluye un motor en segundo plano (`sync_engine.py`) embebido en FastAPI diseñado para entornos multi-servidor:

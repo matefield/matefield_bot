@@ -1,29 +1,8 @@
 import pytest
-import pytest_asyncio
-from sqlmodel import SQLModel, select
+from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
-from sqlalchemy.ext.asyncio import create_async_engine
-from sqlalchemy.pool import StaticPool
-import sys
-import os
 
 from src.connections.databases.db import Role, RoleType
-
-sqlite_url = "sqlite+aiosqlite:///test_domain.db"
-engine = create_async_engine(sqlite_url, connect_args={"check_same_thread": False}, poolclass=StaticPool)
-
-@pytest_asyncio.fixture(autouse=True)
-async def setup_db():
-    async with engine.begin() as conn:
-        await conn.run_sync(SQLModel.metadata.create_all)
-    yield
-    async with engine.begin() as conn:
-        await conn.run_sync(SQLModel.metadata.drop_all)
-
-@pytest_asyncio.fixture
-async def session() -> AsyncSession:
-    async with AsyncSession(engine) as session:
-        yield session
 
 @pytest.mark.asyncio
 async def test_role_creation_and_types(session: AsyncSession):

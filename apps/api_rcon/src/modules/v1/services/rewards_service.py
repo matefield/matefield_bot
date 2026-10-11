@@ -1,26 +1,32 @@
 import secrets
-from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from datetime import UTC, datetime
+from typing import Any
+
 from fastapi import HTTPException
-from sqlmodel import select, func, col, or_
+from sqlmodel import col, func, or_, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from src.connections.databases.db import (
-    Player, PlayerSession, RewardItem, RewardClaim, BotConfig
+    BotConfig,
+    Player,
+    PlayerSession,
+    RewardClaim,
+    RewardItem,
 )
 from src.modules.v1.schemas.dtos import (
-    CreateRewardItemRequest,
-    ClaimRewardRequest,
-    DeliverClaimRequest,
-    RefundClaimRequest,
-    GiveRewardPointsRequest,
     AddMembershipRequest,
+    ClaimRewardRequest,
+    CreateRewardItemRequest,
+    DeliverClaimRequest,
+    GiveRewardPointsRequest,
+    RefundClaimRequest,
 )
 from src.modules.v1.services.memberships_service import MembershipsService
 from src.modules.v1.services.roles_service import RolesService
 from wardogs_config import BOT_SETTINGS
 
 STEAM_ID_64_LENGTH = 17
+SEEDING_FAILURE_GRACE_PERIOD_SECONDS = 300
 
 
 class RewardsService:
@@ -79,7 +85,7 @@ class RewardsService:
             await session.commit()
 
     @staticmethod
-    async def find_player(identifier: str, session: AsyncSession, for_update: bool = False) -> Optional[Player]:
+    async def find_player(identifier: str, session: AsyncSession, for_update: bool = False) -> Player | None:
         clean_id = identifier.strip()
         stmt = select(Player).where(or_(Player.steam_id == clean_id, Player.discord_id == clean_id))
         if for_update:
@@ -87,43 +93,92 @@ class RewardsService:
         return (await session.exec(stmt)).first()
 
     @staticmethod
-    def process_session_seeding(
-        session_obj: PlayerSession,
+    def evaluate_global_seeding(
         player_obj: Player,
-        delta_seconds: int,
-        is_seeding: bool,
         minutes_per_point: int,
         require_linked: bool = True,
     ) -> int:
         """
-        Calculates and records seeding seconds and awards reward points atomically.
+        Evaluates the global unrewarded seeding seconds of a player and awards points.
         Rewards strictly require a linked account (discord_id present).
-        Returns the number of points awarded in this tick.
+        Returns the number of points awarded in this evaluation.
         """
-        if delta_seconds <= 0:
-            return 0
-
-        session_obj.total_seconds += delta_seconds
-        if not is_seeding:
-            return 0
-
-        session_obj.seeding_seconds += delta_seconds
         if require_linked and not player_obj.discord_id:
             return 0
 
         required_seconds = max(1, minutes_per_point) * 60
-        unrewarded_seconds = session_obj.seeding_seconds - session_obj.rewarded_seeding_seconds
+        unrewarded_seconds = player_obj.global_seeding_seconds - player_obj.global_rewarded_seconds
 
         if unrewarded_seconds >= required_seconds:
             points = unrewarded_seconds // required_seconds
-            player_obj.reward_points = Player.reward_points + points
-            session_obj.rewarded_seeding_seconds += points * required_seconds
+            player_obj.reward_points += points
+            player_obj.global_rewarded_seconds += points * required_seconds
             return points
 
         return 0
 
     @staticmethod
-    async def get_catalog(session: AsyncSession, only_active: bool = True) -> List[Dict[str, Any]]:
+    async def process_server_seeding_campaign(
+        session: AsyncSession,
+        server_id: int,
+        state: Any,
+        current_players_count: int,
+        is_seeding: bool,
+        seeding_threshold: int,
+        seeding_min_to_count: int,
+        minutes_per_point: int,
+        now: datetime
+    ) -> None:
+        """
+        Evaluates the current state of a server to determine if a seeding campaign
+        is active, successful, or has failed. This modifies the state in place and 
+        processes pending seconds in PlayerSessions when thresholds are met.
+        """
+        if is_seeding:
+            state.has_unvalidated_seeding_campaign = True
+            state.empty_since = None
+
+        if current_players_count >= seeding_threshold:
+            state.empty_since = None
+            if state.has_unvalidated_seeding_campaign:
+                # Campaign SUCCEEDED! Validate pending seconds for this server
+                unvalidated_stmt = select(PlayerSession).where(
+                    PlayerSession.server_id == server_id, 
+                    PlayerSession.seeding_seconds > PlayerSession.rewarded_seeding_seconds
+                )
+                unvalidated_sessions = (await session.exec(unvalidated_stmt)).all()
+                if unvalidated_sessions:
+                    steam_ids = list({s.steam_id for s in unvalidated_sessions})
+                    players_stmt = select(Player).where(col(Player.steam_id).in_(steam_ids))
+                    players_dict = {p.steam_id: p for p in (await session.exec(players_stmt)).all()}
+
+                    for s in unvalidated_sessions:
+                        untransferred = s.seeding_seconds - s.rewarded_seeding_seconds
+                        db_p = players_dict.get(s.steam_id)
+                        if db_p:
+                            db_p.global_seeding_seconds += untransferred
+                            s.rewarded_seeding_seconds += untransferred
+                            RewardsService.evaluate_global_seeding(db_p, minutes_per_point)
+                            session.add(db_p)
+                        session.add(s)
+                state.has_unvalidated_seeding_campaign = False
+
+        elif current_players_count < seeding_min_to_count:
+            if state.empty_since is None:
+                state.empty_since = now
+            elif (now - state.empty_since).total_seconds() > SEEDING_FAILURE_GRACE_PERIOD_SECONDS and state.has_unvalidated_seeding_campaign:
+                # Campaign FAILED! Discard pending seconds for this server
+                failed_stmt = select(PlayerSession).where(
+                    PlayerSession.server_id == server_id, 
+                    PlayerSession.seeding_seconds > PlayerSession.rewarded_seeding_seconds
+                )
+                for s in (await session.exec(failed_stmt)).all():
+                    s.seeding_seconds = s.rewarded_seeding_seconds
+                    session.add(s)
+                state.has_unvalidated_seeding_campaign = False
+
+    @staticmethod
+    async def get_catalog(session: AsyncSession, only_active: bool = True) -> list[dict[str, Any]]:
         await RewardsService._ensure_defaults(session)
         stmt = select(RewardItem)
         if only_active:
@@ -149,7 +204,7 @@ class RewardsService:
     @staticmethod
     async def create_or_update_reward_item(
         req: CreateRewardItemRequest, session: AsyncSession
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         if req.cost_points <= 0:
             raise HTTPException(status_code=400, detail="El costo en puntos debe ser mayor a 0.")
         if req.duration_days is not None and req.duration_days < 0:
@@ -166,7 +221,7 @@ class RewardsService:
             existing.reward_value = req.reward_value.strip()
             existing.duration_days = req.duration_days
             existing.is_active = req.is_active
-            existing.updated_at = datetime.now(timezone.utc)
+            existing.updated_at = datetime.now(UTC)
             session.add(existing)
             await session.commit()
             return {"ok": True, "message": f"Recompensa '{normalized_code}' actualizada exitosamente"}
@@ -187,7 +242,7 @@ class RewardsService:
         return {"ok": True, "message": f"Recompensa '{normalized_code}' creada exitosamente"}
 
     @staticmethod
-    async def get_player_balance(identifier: str, session: AsyncSession) -> Dict[str, Any]:
+    async def get_player_balance(identifier: str, session: AsyncSession) -> dict[str, Any]:
         player = await RewardsService.find_player(identifier, session)
         if not player:
             raise HTTPException(
@@ -200,22 +255,9 @@ class RewardsService:
                 detail=f"El jugador '{player.steam_id}' no tiene su cuenta de Discord vinculada. Es obligatorio vincularla con /player link para participar en el sistema de recompensas.",
             )
 
-        # Calculate total seeding minutes across sessions
-        seeding_seconds_stmt = select(func.coalesce(func.sum(col(PlayerSession.seeding_seconds)), 0)).where(
-            PlayerSession.steam_id == player.steam_id
-        )
-        total_seeding_seconds = (await session.exec(seeding_seconds_stmt)).one()
-        total_seeding_minutes = int(total_seeding_seconds) // 60
-        
-        # Calculate unrewarded seconds from current session
-        current_session_stmt = select(PlayerSession).where(
-            PlayerSession.steam_id == player.steam_id,
-            PlayerSession.end_time == None
-        )
-        current_session = (await session.exec(current_session_stmt)).first()
-        unrewarded_seconds = 0
-        if current_session:
-            unrewarded_seconds = current_session.seeding_seconds - current_session.rewarded_seeding_seconds
+        # Calculate total seeding minutes
+        total_seeding_minutes = int(player.global_seeding_seconds) // 60
+        unrewarded_seconds = player.global_seeding_seconds - player.global_rewarded_seconds
             
         cfg = await session.get(BotConfig, "SEEDING_MINUTES_PER_POINT")
         minutes_per_point = int(cfg.config_value) if (cfg and cfg.config_value and cfg.config_value.isdigit()) else 30
@@ -233,7 +275,7 @@ class RewardsService:
 
         # Batch-load reward items to avoid N+1 queries
         reward_ids = {c.reward_id for c in claims}
-        rewards_by_id: Dict[int, RewardItem] = {}
+        rewards_by_id: dict[int, RewardItem] = {}
         if reward_ids:
             fetched = (await session.exec(select(RewardItem).where(col(RewardItem.id).in_(reward_ids)))).all()
             rewards_by_id = {r.id: r for r in fetched if r.id is not None}
@@ -268,7 +310,7 @@ class RewardsService:
         }
 
     @staticmethod
-    async def claim_reward(req: ClaimRewardRequest, session: AsyncSession) -> Dict[str, Any]:
+    async def claim_reward(req: ClaimRewardRequest, session: AsyncSession) -> dict[str, Any]:
         player = await RewardsService.find_player(req.player_identifier, session, for_update=True)
         if not player:
             raise HTTPException(
@@ -326,12 +368,12 @@ class RewardsService:
             claim_code=code,
             status="PENDING",
             points_spent=reward.cost_points,
-            claimed_at=datetime.now(timezone.utc),
+            claimed_at=datetime.now(UTC),
         )
         session.add(claim)
         await session.flush()
 
-        delivery_info: Dict[str, Any] = {"delivery_type": reward.delivery_type}
+        delivery_info: dict[str, Any] = {"delivery_type": reward.delivery_type}
 
         # Automatic Fulfillment
         if reward.delivery_type.upper() == "AUTOMATIC":
@@ -344,14 +386,14 @@ class RewardsService:
                 )
                 mem_res = await MembershipsService.add_membership(membership_req, session)
                 claim.status = "DELIVERED"
-                claim.delivered_at = datetime.now(timezone.utc)
+                claim.delivered_at = datetime.now(UTC)
                 claim.delivered_by = "SYSTEM"
                 claim.notes = f"Entrega automática de membresía {reward.reward_value}"
                 delivery_info["membership_result"] = mem_res
             elif reward.reward_type.upper() == "ROLE":
                 role_res = await RolesService.add_special_role(player.steam_id, reward.reward_value, session)
                 claim.status = "DELIVERED"
-                claim.delivered_at = datetime.now(timezone.utc)
+                claim.delivered_at = datetime.now(UTC)
                 claim.delivered_by = "SYSTEM"
                 claim.notes = f"Entrega automática de rol especial {reward.reward_value}"
                 delivery_info["role_result"] = role_res
@@ -387,7 +429,7 @@ class RewardsService:
         }
 
     @staticmethod
-    async def verify_claim(claim_code: str, session: AsyncSession) -> Dict[str, Any]:
+    async def verify_claim(claim_code: str, session: AsyncSession) -> dict[str, Any]:
         clean_code = claim_code.strip().upper()
         claim = (await session.exec(select(RewardClaim).where(RewardClaim.claim_code == clean_code))).first()
         if not claim:
@@ -415,7 +457,7 @@ class RewardsService:
     @staticmethod
     async def deliver_claim(
         claim_code: str, req: DeliverClaimRequest, session: AsyncSession
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         clean_code = claim_code.strip().upper()
         claim = (await session.exec(select(RewardClaim).where(RewardClaim.claim_code == clean_code).with_for_update())).first()
         if not claim:
@@ -433,7 +475,7 @@ class RewardsService:
             )
 
         claim.status = "DELIVERED"
-        claim.delivered_at = datetime.now(timezone.utc)
+        claim.delivered_at = datetime.now(UTC)
         claim.delivered_by = req.delivered_by.strip()
         if req.notes:
             claim.notes = req.notes.strip()
@@ -449,7 +491,7 @@ class RewardsService:
     @staticmethod
     async def refund_claim(
         claim_code: str, req: RefundClaimRequest, session: AsyncSession
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         clean_code = claim_code.strip().upper()
         claim = (await session.exec(select(RewardClaim).where(RewardClaim.claim_code == clean_code).with_for_update())).first()
         if not claim:
@@ -481,7 +523,7 @@ class RewardsService:
         }
 
     @staticmethod
-    async def give_points(req: GiveRewardPointsRequest, session: AsyncSession) -> Dict[str, Any]:
+    async def give_points(req: GiveRewardPointsRequest, session: AsyncSession) -> dict[str, Any]:
         player = await RewardsService.find_player(req.player_identifier, session, for_update=True)
         if not player:
             # If identifier is a 17-digit SteamID, create the player record

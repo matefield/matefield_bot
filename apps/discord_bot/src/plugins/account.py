@@ -1,23 +1,25 @@
-import crescent
-import hikari
 import logging
 import re
-from typing import Optional
+
+import crescent
+import hikari
+
+from src.hooks import admin_only, check_is_admin
 from src.model import Model
-from src.hooks import check_is_admin, admin_only
 
 logger = logging.getLogger(__name__)
 
-from src.groups import player_group
-from wardogs_schemas.steam_token import create_steam_link_token
 from wardogs_config import BOT_SETTINGS
-from src.trace import get_tracer
+from wardogs_schemas.steam_token import create_steam_link_token
+
+from src.groups import player_group
 from src.plugins.tasks import sync_single_user_roles
+from src.trace import get_tracer
 
 plugin = crescent.Plugin[hikari.GatewayBot, Model]()
 
 
-def _parse_steam_emoji(raw: Optional[str]) -> hikari.UnicodeEmoji | hikari.CustomEmoji:
+def _parse_steam_emoji(raw: str | None) -> hikari.UnicodeEmoji | hikari.CustomEmoji:
     val = (raw or "").strip().strip("\"'")
     if not val:
         return hikari.UnicodeEmoji("🎮")
@@ -43,7 +45,7 @@ COLOR_PROFILE_DARK = 0x2B2D31
 MAX_WELCOME_MESSAGE_LENGTH = 60
 
 
-def _resolve_guild_id(guild_id: Optional[hikari.Snowflake] = None) -> Optional[hikari.Snowflake]:
+def _resolve_guild_id(guild_id: hikari.Snowflake | None = None) -> hikari.Snowflake | None:
     """Resuelve el ID de la guild proporcionada o retorna la primera encontrada en caché."""
     if guild_id:
         return guild_id
@@ -56,7 +58,7 @@ def _resolve_guild_id(guild_id: Optional[hikari.Snowflake] = None) -> Optional[h
     return None
 
 
-def _build_user_steam_link(user: hikari.User, guild_id: Optional[hikari.Snowflake] = None) -> str:
+def _build_user_steam_link(user: hikari.User, guild_id: hikari.Snowflake | None = None) -> str:
     """Genera una URL firmada de OpenID para vincular Steam con Discord de forma segura."""
     secret_key = plugin.model.api.api_key
     resolved_guild = _resolve_guild_id(guild_id)
@@ -103,9 +105,9 @@ def build_link_panel(rest):
 
 async def _link_reply(user, guild_id, rest):
     player = await plugin.model.api.get_player_by_discord(str(user.id))
-    if player and player.get("steam_id"):
+    if player and player.steam_id:
         name = _display_name(user.global_name or user.username)
-        steam_name = player.get("in_game_name")
+        steam_name = player.in_game_name
         steam = _display_name(steam_name) if steam_name else "tu cuenta de Steam"
         embed = hikari.Embed(title="Tu cuenta ya está vinculada",
                              description="No tenés que hacer nada más.", color=0x54ED72)
@@ -293,25 +295,30 @@ class SetWelcomeMessage:
             if not db_player:
                 await ctx.respond(f"❌ El usuario {self.usuario.mention} no tiene una cuenta vinculada.")
                 return
-            target_steam = db_player.get("steam_id")
+            target_steam = db_player.steam_id
             
         if not target_steam:
             discord_id = str(ctx.user.id)
             user_data = await plugin.model.api.get_player_by_discord(discord_id)
-            if not user_data or not user_data.get("steam_id"):
+            if not user_data or not user_data.steam_id:
                 await ctx.respond("❌ Debes vincular tu cuenta de Steam primero usando `/player link` o especificar a quién editar.")
                 return
-            target_steam = user_data["steam_id"]
+            target_steam = user_data.steam_id
             
         steam_data = await plugin.model.api.get_player_by_steam(str(target_steam))
-        active_role = steam_data.get("active_role") if steam_data else None
+        if not steam_data:
+            await ctx.respond("❌ Jugador no encontrado.")
+            return
+            
+        has_vip = "VIP" in steam_data.roles or "ADMIN" in steam_data.roles or steam_data.role in ["VIP", "ADMIN"]
         
-        if not active_role:
-            await ctx.respond(f"❌ El jugador no tiene una membresía VIP o ADMIN activa. No se puede establecer el mensaje.")
+        if not has_vip:
+            await ctx.respond("❌ El jugador no tiene una membresía VIP o ADMIN activa. No se puede establecer el mensaje.")
             return
             
         await plugin.model.api.set_welcome_message(str(target_steam), self.message)
-        preview_msg = f"El {active_role} [Nombre en Juego] se conectó: \"{self.message}\""
+        role_label = steam_data.role if steam_data.role != "PLAYER" else "VIP"
+        preview_msg = f"El {role_label} {steam_data.in_game_name or 'Jugador'} se conectó: \"{self.message}\""
         await ctx.respond(f"✅ **Mensaje de bienvenida establecido.**\n👀 **Vista Previa:**\n> {preview_msg}")
 
 @plugin.include
@@ -334,13 +341,13 @@ class Profile:
         user_data = None
         if target_discord_id:
             user_data = await plugin.model.api.get_player_by_discord(target_discord_id)
-            if not user_data or not user_data.get("steam_id"):
+            if not user_data or not user_data.steam_id:
                 if target_discord_id == str(ctx.user.id):
                     await ctx.respond("❌ No tienes ninguna cuenta de Steam vinculada. Usa /player link primero.")
                 else:
                     await ctx.respond("❌ Ese usuario no tiene cuenta de Steam vinculada.")
                 return
-            target_steam_id = user_data["steam_id"]
+            target_steam_id = user_data.steam_id
             
         steam_data = await plugin.model.api.get_player_by_steam(str(target_steam_id))
         
@@ -351,16 +358,16 @@ class Profile:
         stats_data = await plugin.model.api.get_player_historical_stats(str(target_steam_id))
             
         # Parse data
-        memberships = steam_data.get("active_memberships") or steam_data.get("memberships", [])
-        special_roles = steam_data.get("special_roles", [])
-        active_role = steam_data.get("active_role", "Ninguno")
+        memberships = getattr(steam_data, "active_memberships", None) or getattr(steam_data, "memberships", [])
+        special_roles = getattr(steam_data, "roles", [])
+        active_role = getattr(steam_data, "role", "Ninguno")
         if not active_role:
             active_role = "Ninguno"
         
         # We need to fetch the Steam API for the real name if it's not in our DB
-        in_game_name = steam_data.get("name") or steam_data.get("in_game_name") or "Desconocido"
+        in_game_name = getattr(steam_data, "name", None) or getattr(steam_data, "in_game_name", None) or "Desconocido"
         
-        linked_discord = steam_data.get("discord_id", None)
+        linked_discord = getattr(steam_data, "discord_id", None)
         
         # Build embed
         embed = hikari.Embed(
@@ -368,7 +375,7 @@ class Profile:
             description=f"**Steam ID:** {target_steam_id}",
             color=COLOR_PROFILE_DARK
         )
-        avatar_url = steam_data.get("avatar_url")
+        avatar_url = getattr(steam_data, "avatar_url", None)
         if avatar_url:
             embed.set_thumbnail(avatar_url)
             
@@ -391,7 +398,7 @@ class Profile:
         is_admin = await check_is_admin(ctx)
         if is_admin:
             embed.add_field(name="⭐ Rango RCON", value=active_role, inline=False)
-            obs = steam_data.get("observations")
+            obs = getattr(steam_data, "observations", None)
             if obs:
                 embed.add_field(name="📝 Observaciones Internas", value=f"```{obs}```", inline=False)
 

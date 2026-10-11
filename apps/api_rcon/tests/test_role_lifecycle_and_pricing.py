@@ -1,11 +1,17 @@
-from datetime import datetime, timezone, timedelta
+from datetime import UTC, datetime, timedelta
+
 import pytest
+import src.connections.apis.rcon as rcon_module
 from httpx import AsyncClient
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
-
-import src.connections.apis.rcon as rcon_module
-from src.connections.databases.db import Player, Membership, Role, PlayerRole, MembershipType
+from src.connections.databases.db import (
+    Membership,
+    MembershipType,
+    Player,
+    PlayerRole,
+    Role,
+)
 from src.modules.v1.services.players_service import PlayersService
 from wardogs_schemas import v1 as schemas
 
@@ -18,7 +24,7 @@ def mock_rcon(mocker):
 
 @pytest.mark.asyncio
 async def test_vip_expiry_revokes_vip_role_but_preserves_special_role(session: AsyncSession, client: AsyncClient):
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     
     # 1. Create Roles: VIP Común (VIP) and Fundador (SPECIAL)
     vip_role = Role(code="VIP_COMUN", name="VIP COMUN", role_type="VIP", discord_role_id="111111111")
@@ -33,8 +39,7 @@ async def test_vip_expiry_revokes_vip_role_but_preserves_special_role(session: A
     m_type = MembershipType(
         code="VIP_COMUN",
         name="VIP Común",
-        price_usd=6.0,
-        base_price_usd=5.0,
+        price_usd=6,
         default_days=30,
         role_id=vip_role.id,
         is_active=True
@@ -83,7 +88,7 @@ async def test_vip_expiry_revokes_vip_role_but_preserves_special_role(session: A
 
 @pytest.mark.asyncio
 async def test_multiple_active_vip_memberships_same_role(session: AsyncSession, client: AsyncClient):
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     
     vip_role = Role(code="VIP_COMUN", name="VIP COMUN", role_type="VIP", discord_role_id="111111111")
     session.add(vip_role)
@@ -93,8 +98,7 @@ async def test_multiple_active_vip_memberships_same_role(session: AsyncSession, 
     m_type = MembershipType(
         code="VIP_COMUN",
         name="VIP Común",
-        price_usd=6.0,
-        base_price_usd=5.0,
+        price_usd=6,
         role_id=vip_role.id,
         is_active=True
     )
@@ -165,7 +169,7 @@ async def test_player_profile_isolates_special_roles(session: AsyncSession):
 
 @pytest.mark.asyncio
 async def test_membership_with_attached_special_role(session: AsyncSession, client: AsyncClient):
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     # 1. Create Roles: VIP Común (VIP) and Fundador (SPECIAL)
     vip_role = Role(code="VIP_ATTACH_COMUN", name="VIP ATTACH COMUN", role_type="VIP", discord_role_id="555111")
@@ -180,8 +184,7 @@ async def test_membership_with_attached_special_role(session: AsyncSession, clie
     m_type = MembershipType(
         code="VIP_ATTACH_COMUN",
         name="VIP Attach Común",
-        price_usd=6.0,
-        base_price_usd=5.0,
+        price_usd=6,
         default_days=30,
         role_id=vip_role.id,
         is_active=True
@@ -251,7 +254,7 @@ async def test_membership_deletion_cleans_player_roles(session: AsyncSession, cl
     await session.commit()
     await session.refresh(role)
 
-    mt = MembershipType(code="VIP_DEL_TEST", name="VIP Del Test", role_id=role.id, default_days=30, base_price_usd=5.0, price_usd=6.0)
+    mt = MembershipType(code="VIP_DEL_TEST", name="VIP Del Test", role_id=role.id, default_days=30, price_usd=6)
     session.add(mt)
 
     player = Player(steam_id="STEAM_DEL_TEST", discord_id="777666555")
@@ -294,8 +297,8 @@ async def test_membership_edit_type_updates_granted_role(session: AsyncSession, 
     await session.refresh(r1)
     await session.refresh(r2)
 
-    mt1 = MembershipType(code="VIP_TYPE_A", name="VIP Type A", role_id=r1.id, default_days=30, base_price_usd=5.0, price_usd=6.0)
-    mt2 = MembershipType(code="VIP_TYPE_B", name="VIP Type B", role_id=r2.id, default_days=30, base_price_usd=10.0, price_usd=12.0)
+    mt1 = MembershipType(code="VIP_TYPE_A", name="VIP Type A", role_id=r1.id, default_days=30, price_usd=6)
+    mt2 = MembershipType(code="VIP_TYPE_B", name="VIP Type B", role_id=r2.id, default_days=30, price_usd=12)
     session.add(mt1)
     session.add(mt2)
 
@@ -355,7 +358,7 @@ async def test_membership_extend_reactivates_expired_membership(client: AsyncCli
     await session.commit()
     await session.refresh(vip_role)
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     expired_m = Membership(
         steam_id="STEAM_EXT_REACT",
         membership_type="VIP_EXT_REACT",
@@ -378,8 +381,9 @@ async def test_membership_extend_reactivates_expired_membership(client: AsyncCli
     assert expired_m.is_active is True
     # The end_time should be extended from now (+15 days), not from the expired past date
     m_end = expired_m.end_time
+    assert m_end is not None
     if m_end.tzinfo is None:
-        m_end = m_end.replace(tzinfo=timezone.utc)
+        m_end = m_end.replace(tzinfo=UTC)
     assert m_end > now + timedelta(days=14)
 
     # Role in PlayerRole should be restored

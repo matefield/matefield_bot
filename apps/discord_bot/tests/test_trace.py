@@ -1,10 +1,8 @@
-import pytest
 import hikari
+import pytest
 from src.trace import (
-    TraceEvent,
-    EventCollectorObserver,
-    NullTracer,
     DevActionTracer,
+    NullTracer,
     get_tracer,
 )
 
@@ -46,12 +44,14 @@ def test_dev_action_tracer_collects_events():
     assert ev1.category == "DB"
     assert ev1.action == "FETCH"
     assert ev1.status == "OK"
+    assert ev1.details is not None
     assert "76561198000000001" in ev1.details
     assert ev1.duration_ms == 15.2
 
     assert ev2.category == "DISCORD"
     assert ev2.action == "SYNC"
     assert ev2.status == "OK"
+    assert ev2.details is not None
     assert "+2 roles" in ev2.details
     assert ev2.duration_ms >= 0
 
@@ -66,6 +66,7 @@ def test_dev_action_tracer_captures_exceptions():
     assert len(tracer.collector.events) == 1
     ev = tracer.collector.events[0]
     assert ev.status == "ERROR"
+    assert ev.error is not None
     assert "Connection refused" in ev.error
 
 

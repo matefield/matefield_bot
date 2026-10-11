@@ -1,14 +1,14 @@
-from typing import Any
-import crescent
-import time
 import asyncio
+import logging
+import time
+from typing import Any
+
+import crescent
 import hikari
 from crescent.ext import tasks
+
 from src.model import Model
 from wardogs_config import BOT_SETTINGS
-import os
-import datetime
-import logging
 
 plugin = crescent.Plugin[hikari.GatewayBot, Model]()
 logger = logging.getLogger("wardogs.tasks")
@@ -194,7 +194,7 @@ async def match_monitor():
             )
             
     except Exception as e:
-        logger.exception(f"[Match Monitor] Error en la automatización: {repr(e)}")
+        logger.exception(f"[Match Monitor] Error en la automatización: {e!r}")
         if plugin.app and plugin.app.is_alive:
             try:
                 await plugin.app.update_presence(
@@ -236,8 +236,8 @@ async def vip_monitor():
             for steam_id in new_ids:
                 user_data = await plugin.model.api.get_player_by_steam(steam_id)
                 if user_data:
-                    welcome_message = user_data.get("custom_welcome_message")
-                    active_role = user_data.get("active_role")
+                    welcome_message = getattr(user_data, 'custom_welcome_message', None)
+                    active_role = getattr(user_data, 'role', getattr(user_data, 'active_role', None))
                     
                     # Verificar que todavia sea VIP o ADMIN
                     if welcome_message and active_role:
@@ -290,7 +290,7 @@ async def vip_monitor():
             del plugin.model.player_last_seen[sid]
                 
     except Exception as e:
-        logger.exception(f"[VIP Monitor] Error en la automatización: {repr(e)}")
+        logger.exception(f"[VIP Monitor] Error en la automatización: {e!r}")
 
 def membership_roles_owned_by_laracord(sync_result: dict[str, Any]) -> set[int]:
     """Keep membership roles outside every legacy writer during the handover."""
@@ -375,7 +375,7 @@ async def execute_membership_sync(
         return stats
 
     for user_data in sync_data:
-        discord_id_str = user_data.get("discord_id")
+        discord_id_str = user_data.get('discord_id')
 
         if not discord_id_str:
             continue
@@ -385,8 +385,8 @@ async def execute_membership_sync(
             logger.info(f"[Sync] Usuario {discord_id_str} está en Whitelist, saltando sincronización.")
             continue
 
-        active_memberships = user_data.get("active_memberships", [])
-        special_roles = user_data.get("special_roles", [])
+        active_memberships = user_data.get('active_memberships', [])
+        special_roles = user_data.get('special_roles', [])
         discord_id = int(discord_id_str)
         stats["users_checked"] += 1
 
@@ -474,8 +474,8 @@ async def sync_single_user_roles(app: Any, model: Any, discord_id: int | str, ta
 
         roles_to_have: set[int] = set()
         if user_data:
-            active_memberships = user_data.get("active_memberships", []) or []
-            special_roles = user_data.get("special_roles", []) or []
+            active_memberships = user_data.get('active_memberships', []) or []
+            special_roles = user_data.get('special_roles', []) or []
 
             for m_type in active_memberships:
                 r_id = role_maps.get(m_type)
@@ -554,7 +554,7 @@ async def membership_monitor():
     try:
         await execute_membership_sync(plugin.app, plugin.model)
     except Exception as e:
-        logger.exception(f"[Sync] Error en la automatización: {repr(e)}")
+        logger.exception(f"[Sync] Error en la automatización: {e!r}")
 
 @plugin.include
 @tasks.loop(seconds=5)
@@ -592,8 +592,7 @@ async def hacker_monitor_task():
             elapsed_minutes = elapsed_seconds / 60.0
             
             # Avoid division by very small numbers initially
-            if elapsed_minutes < 0.05:
-                elapsed_minutes = 0.05
+            elapsed_minutes = max(elapsed_minutes, 0.05)
                 
             kpm = (current_kills - start_kills) / elapsed_minutes
             
@@ -718,6 +717,54 @@ async def match_announcer_task():
         logger.info(f"[Match Announcer] Anunciada partida {match['id']}")
         
     except Exception as e:
-        logger.exception(f"[Match Announcer] Error: {repr(e)}")
+        logger.exception(f"[Match Announcer] Error: {e!r}")
 
 
+@plugin.include
+@tasks.loop(hours=2)
+async def expiration_notifier_task():
+    if not BOT_SETTINGS.DISCORD_MEMBERSHIP_MANAGEMENT_ENABLED:
+        return
+    if not plugin.model.api or not plugin.app:
+        return
+
+    try:
+        data = await plugin.model.api.get_expiring_memberships()
+        if not data:
+            return
+
+        expiring_3d = data.get("expiring_3d", [])
+        expiring_24h = data.get("expiring_24h", [])
+
+        for mem in expiring_3d:
+            discord_id = mem.get("discord_id")
+            if discord_id and str(discord_id).isdigit():
+                try:
+                    user = await plugin.app.rest.fetch_user(int(discord_id))
+                    await user.send(content=f"⚠️ **Aviso de Vencimiento VIP**\n\nHola, te avisamos que tu membresía VIP ({mem.get('type')}) está por vencer en **3 días** o menos. ¡Aprovecha el tiempo y considera renovarla si lo deseas!")
+                    await plugin.model.api.mark_membership_notified(mem.get("id"), "3d")
+                    logger.info(f"[Expiration Notifier] Aviso de 3 días enviado a {discord_id}")
+                    await asyncio.sleep(1) # rate limit
+                except hikari.ForbiddenError:
+                    logger.warning(f"[Expiration Notifier] No se pudo enviar DM a {discord_id} (DMs cerrados)")
+                    await plugin.model.api.mark_membership_notified(mem.get("id"), "3d") # mark anyway so we don't spam errors
+                except Exception as e:
+                    logger.error(f"[Expiration Notifier] Error al avisar 3d a {discord_id}: {e}")
+
+        for mem in expiring_24h:
+            discord_id = mem.get("discord_id")
+            if discord_id and str(discord_id).isdigit():
+                try:
+                    user = await plugin.app.rest.fetch_user(int(discord_id))
+                    await user.send(content=f"🚨 **ALERTA: Vencimiento VIP Inminente**\n\nHola, tu membresía VIP ({mem.get('type')}) vencerá en **menos de 24 horas**. ¡Esperamos que hayas disfrutado tus beneficios!")
+                    await plugin.model.api.mark_membership_notified(mem.get("id"), "24h")
+                    logger.info(f"[Expiration Notifier] Aviso de 24 horas enviado a {discord_id}")
+                    await asyncio.sleep(1) # rate limit
+                except hikari.ForbiddenError:
+                    logger.warning(f"[Expiration Notifier] No se pudo enviar DM a {discord_id} (DMs cerrados)")
+                    await plugin.model.api.mark_membership_notified(mem.get("id"), "24h")
+                except Exception as e:
+                    logger.error(f"[Expiration Notifier] Error al avisar 24h a {discord_id}: {e}")
+
+    except Exception as e:
+        logger.exception(f"[Expiration Notifier] Error general: {e!r}")

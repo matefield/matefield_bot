@@ -1,4 +1,5 @@
 """The legacy bot keeps account and unrelated roles during the Laracord handover."""
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -58,7 +59,7 @@ async def test_unlink_removes_link_but_preserves_membership_roles(legacy_bot):
 @pytest.mark.asyncio
 async def test_remove_all_preserves_memberships_and_cleans_only_legacy_roles(legacy_bot, monkeypatch):
     app, model = legacy_bot
-    model.api.get_player_by_discord.return_value = {"steam_id": "test-steam"}
+    model.api.get_player_by_discord.return_value = SimpleNamespace(steam_id="test-steam")
     model.api.get_bot_config.return_value = "9000"
     app.rest.fetch_member.return_value.role_ids = [1002, 2001, 4001, 3001, 9000]
     client = MagicMock(model=model, app=app)
@@ -136,7 +137,7 @@ async def test_manual_role_commands_show_api_rejection_without_discord_sync(monk
 
     module = import_module(f"src.plugins.{module_name}")
     api = APIClient("http://api.test", "test-only")
-    api.get_player_by_discord = AsyncMock(return_value={"steam_id": "test-steam"})
+    api.get_player_by_discord = AsyncMock(return_value=SimpleNamespace(steam_id="test-steam"))
     api.get_all_roles = AsyncMock(return_value=[{"code": "FOUNDER", "name": "Fundador",
                                                "role_type": "SPECIAL", "discord_role_id": "2001"}])
     response = MagicMock(status=409)
@@ -168,3 +169,39 @@ async def test_manual_role_commands_show_api_rejection_without_discord_sync(monk
     sync.assert_not_awaited()
     app.rest.add_role_to_member.assert_not_called()
     app.rest.remove_role_from_member.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_membership_handover_disables_expiration_notices_before_api_or_discord(legacy_bot, monkeypatch):
+    app, model = legacy_bot
+    monkeypatch.setattr(tasks.plugin, "_client", MagicMock(model=model, app=app))
+
+    await tasks.expiration_notifier_task.metadata.callback()
+
+    model.api.get_expiring_memberships.assert_not_awaited()
+    model.api.mark_membership_notified.assert_not_awaited()
+    app.rest.fetch_user.assert_not_awaited()
+    app.rest.create_dm_channel.assert_not_awaited()
+    app.rest.create_message.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_enabled_legacy_management_preserves_both_expiration_notices(legacy_bot, monkeypatch):
+    app, model = legacy_bot
+    monkeypatch.setattr(BOT_SETTINGS, "DISCORD_MEMBERSHIP_MANAGEMENT_ENABLED", True)
+    monkeypatch.setattr(tasks.plugin, "_client", MagicMock(model=model, app=app))
+    model.api.get_expiring_memberships.return_value = {
+        "expiring_3d": [{"id": 11, "discord_id": "1111", "type": "REGULAR"}],
+        "expiring_24h": [{"id": 12, "discord_id": "2222", "type": "EXPRESS"}],
+    }
+    user = MagicMock()
+    user.send = AsyncMock()
+    app.rest.fetch_user.return_value = user
+
+    await tasks.expiration_notifier_task.metadata.callback()
+
+    model.api.get_expiring_memberships.assert_awaited_once()
+    assert [call.args[0] for call in app.rest.fetch_user.await_args_list] == [1111, 2222]
+    assert user.send.await_count == 2
+    model.api.mark_membership_notified.assert_any_await(11, "3d")
+    model.api.mark_membership_notified.assert_any_await(12, "24h")

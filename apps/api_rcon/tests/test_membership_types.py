@@ -1,8 +1,6 @@
 import pytest
 from sqlmodel import select
-from src.connections.databases.db import Player, Membership, RconServer, MembershipType
-from src.modules.v1.services.rcon_servers_service import RconServersService
-from src.connections.apis.rcon import RCONManager, RCONClient
+from src.connections.databases.db import Membership, MembershipType, Player
 
 
 @pytest.mark.asyncio
