@@ -148,11 +148,18 @@ El túnel permite login, callback, resultado y recursos de la página Steam; los
 demás paths responden `404`. Publicá el panel mediante `/player link_channel` en
 el canal de pruebas elegido, o usá `/player link` para obtener un enlace privado.
 
-Al terminar las pruebas, detené los servicios con `docker compose stop` (sin
-eliminar volúmenes). Retirá de Cloudflare el DNS, el túnel y la aplicación y
+Al terminar las pruebas, detené los servicios locales con
+`docker compose -f docker-compose.local.yml --env-file .env.local --profile tunnel stop`
+(sin eliminar volúmenes). Retirá de Cloudflare el DNS, el túnel y la aplicación y
 política de Access que se crearon exclusivamente para este hostname. Limpiá las
 variables `CLOUDFLARE_TUNNEL_ID` y `CLOUDFLARE_TUNNEL_CREDENTIALS_FILE`, y volvé a
 `PUBLIC_API_URL=http://localhost:8000/` en el entorno local.
+
+### Warcon local
+
+La [guía de Warcon local](infra/warcon/README.md) incluye el override de Compose
+para conectar el panel y su worker al mock RCON. La configuración se versiona en
+este repositorio y se aplica sobre el checkout de Warcon.
 
 ### 3. Levantar el Entorno de Producción
 Para el entorno en vivo (conectado a la base de datos de producción y servidor RCON real):

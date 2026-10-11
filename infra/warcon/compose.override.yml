@@ -1,0 +1,16 @@
+# Local Matefield mocks. Start docker-compose.local.yml before Warcon.
+# Load this override explicitly alongside the third-party docker-compose.yml.
+services:
+  warcon:
+    networks:
+      - default
+      - rcon_shared
+  worker:
+    networks:
+      - default
+      - rcon_shared
+
+networks:
+  rcon_shared:
+    external: true
+    name: matefield-discord-bot_matefield_local_net
