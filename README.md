@@ -87,6 +87,73 @@ Ejecuta el siguiente comando en la raíz del proyecto para construir y levantar 
 docker compose -f docker-compose.local.yml up -d --build
 ```
 
+### Pruebas locales con Laracord y Steam
+
+Usá aplicaciones Discord diferentes para cada bot y agregá la aplicación Python
+solo al servidor de pruebas. Laracord administra membresías y roles VIP; Python
+conserva la vinculación Steam y las demás operaciones. En `.env.local`:
+
+```dotenv
+DISCORD_GUILD_ID=ID_DEL_SERVIDOR_DE_PRUEBAS
+DISCORD_GUILD_IDS=ID_DEL_SERVIDOR_DE_PRUEBAS
+DISCORD_MEMBERSHIP_MANAGEMENT_ENABLED=false
+API_BASE_URL=http://matefield-api:8000
+```
+
+La API tiene el alias `matefield-api` en la red local de Compose. Laracord debe
+conectarse a `matefield-discord-bot_matefield_local_net`, usar ese mismo origen y
+la misma `API_KEY`, con su propio token Discord. El bot Python espera que la API
+esté saludable antes de iniciar. En Developer Portal, activá **Server Members
+Intent** y **Presence Intent** para Python. Su rol debe estar por encima del rol
+de vinculación Steam; el de Laracord, por encima de los roles VIP.
+
+Al restaurar una base de producción, configurá sus filas `rcon_servers` para el
+mock local antes de iniciar la API: la base tiene prioridad sobre `RCON_URL`.
+También configurá los roles, `GUILD_ID` y `LINK_ROLE_ID` para pruebas y retirale
+las referencias del panel y de canales de anuncios anteriores.
+
+El perfil opcional `tunnel` publica el recorrido Steam en
+`https://matefield-api-dev.openchamba.online`. El acceso a membresías permanece en la red
+Docker. Una vez autorizado el dominio en Cloudflare, configurá en `.env.local`:
+
+```dotenv
+PUBLIC_API_URL=https://matefield-api-dev.openchamba.online
+CLOUDFLARE_TUNNEL_ID=ID_DEL_TUNEL
+CLOUDFLARE_TUNNEL_CREDENTIALS_FILE=/home/nono/.cloudflared/ID_DEL_TUNEL.json
+```
+
+Conservá el JSON de credenciales fuera del repositorio, accesible al usuario local
+UID 1000. El hostname debe estar asociado a ese túnel en Cloudflare y el recorrido
+Steam debe ser público, sin una pantalla de autenticación de Cloudflare Access.
+Si una aplicación global de Access cubre `openchamba.online` o sus subdominios,
+configurá una excepción para el hostname exacto
+`matefield-api-dev.openchamba.online`: una aplicación dedicada con política
+**Bypass** para **Everyone**. Conservá la protección de la aplicación global y de
+los demás dominios. El ingress del túnel sigue limitando este hostname al recorrido
+Steam y sus recursos; las operaciones privadas responden `404`.
+
+El certificado local de `cloudflared` usado para administrar el túnel y su DNS no
+habilita la gestión de aplicaciones o políticas de Access. Configurá esa excepción
+desde el panel de Cloudflare con una cuenta que tenga permisos de Access.
+
+Para cargar las variables y levantarlo:
+
+```bash
+docker compose -f docker-compose.local.yml --env-file .env.local up -d --wait api_rcon
+docker compose -f docker-compose.local.yml --env-file .env.local up -d discord_bot
+docker compose -f docker-compose.local.yml --env-file .env.local --profile tunnel up -d cloudflared
+```
+
+El túnel permite login, callback, resultado y recursos de la página Steam; los
+demás paths responden `404`. Publicá el panel mediante `/player link_channel` en
+el canal de pruebas elegido, o usá `/player link` para obtener un enlace privado.
+
+Al terminar las pruebas, detené los servicios con `docker compose stop` (sin
+eliminar volúmenes). Retirá de Cloudflare el DNS, el túnel y la aplicación y
+política de Access que se crearon exclusivamente para este hostname. Limpiá las
+variables `CLOUDFLARE_TUNNEL_ID` y `CLOUDFLARE_TUNNEL_CREDENTIALS_FILE`, y volvé a
+`PUBLIC_API_URL=http://localhost:8000/` en el entorno local.
+
 ### 3. Levantar el Entorno de Producción
 Para el entorno en vivo (conectado a la base de datos de producción y servidor RCON real):
 

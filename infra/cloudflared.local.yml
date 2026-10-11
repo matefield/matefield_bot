@@ -1,0 +1,7 @@
+credentials-file: /etc/cloudflared/tunnel.json
+
+ingress:
+  - hostname: matefield-api-dev.openchamba.online
+    path: ^/(api/v1/auth/steam/(login|callback|test/(success|error))|vincular/discord-steam/resultado|static/.*|api/static/.*)$
+    service: http://matefield-api:8000
+  - service: http_status:404

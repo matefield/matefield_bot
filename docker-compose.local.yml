@@ -66,10 +66,18 @@ services:
     ports:
       - "8000:8000"
     networks:
-      - matefield_local_net
+      matefield_local_net:
+        aliases:
+          - matefield-api
     depends_on:
       postgres:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "/app/.venv/bin/python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/openapi.json', timeout=3)"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 15s
 
   discord_bot:
     build:
@@ -87,7 +95,24 @@ services:
     networks:
       - matefield_local_net
     depends_on:
-      - api_rcon
+      api_rcon:
+        condition: service_healthy
+
+  cloudflared:
+    image: cloudflare/cloudflared:2026.9.3
+    profiles: [tunnel]
+    restart: unless-stopped
+    user: "1000:1000"
+    command: ["tunnel", "--no-autoupdate", "--config", "/etc/cloudflared/config.yml", "run", "${CLOUDFLARE_TUNNEL_ID:-pending}"]
+    volumes:
+      - ./infra/cloudflared.local.yml:/etc/cloudflared/config.yml:ro
+      - ${CLOUDFLARE_TUNNEL_CREDENTIALS_FILE:-/home/nono/.cloudflared/matefield-local-api.json}:/etc/cloudflared/tunnel.json:ro
+    networks:
+      - matefield_local_net
+    depends_on:
+      api_rcon:
+        condition: service_healthy
+
 
 networks:
   matefield_local_net:
